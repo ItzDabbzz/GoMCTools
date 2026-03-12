@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "golang.go",
+        "shivamkumar.go-extras",
+        "aaron-bond.better-comments",
+        "stackbreak.comment-divider"
+    ]
+}

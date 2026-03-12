@@ -23,9 +23,6 @@ var (
 	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
 	activeTabStyle    = inactiveTabStyle.Border(activeTabBorder, true)
 	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(1, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
-	keyLabelStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#0b1021")).Background(highlightColor).Padding(0, 1)
-	keyDescStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#8f9bb3")).MarginRight(2)
-	footerStyle       = lipgloss.NewStyle().MarginTop(1)
 	inputBoxStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).BorderForeground(highlightColor).Padding(0, 1)
 	borderFillStyle   = lipgloss.NewStyle().Foreground(highlightColor)
 	warningBoxStyle   = lipgloss.NewStyle().
@@ -47,7 +44,6 @@ var (
 
 func renderTabs(z *zone.Manager, prefix string, titles []string, active int) string {
 	var renderedTabs []string
-
 	for i, t := range titles {
 		style := inactiveTabStyle
 		isFirst, isLast, isActive := i == 0, i == len(titles)-1, i == active
@@ -64,13 +60,11 @@ func renderTabs(z *zone.Manager, prefix string, titles []string, active int) str
 			border.BottomRight = "┴"
 		}
 		style = style.Border(border)
-
 		rendered := style.Render(t)
 		if z != nil {
 			id := fmt.Sprintf("%stab-%d", prefix, i)
 			rendered = z.Mark(id, rendered)
 		}
-
 		renderedTabs = append(renderedTabs, rendered)
 	}
 
