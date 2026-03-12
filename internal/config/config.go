@@ -10,15 +10,16 @@ import (
 )
 
 // Config represents the application's persistent settings.
-// Comments are preserved when saving to TOML format.
+// It is serialised to TOML and loaded from ~/.config/gomctools/config.toml.
 type Config struct {
-	// Global settings
-	AutoLoadPreviousState bool   `toml:"auto_load_previous_state"`
-	TelemetryEnabled      bool   `toml:"telemetry_enabled"`
-	LastPackPath          string `toml:"last_pack_path"`
+	// AutoLoadPreviousState reopens the last loaded pack on startup when true.
+	AutoLoadPreviousState bool `toml:"auto_load_previous_state"`
+	// TelemetryEnabled controls whether anonymous usage data is reported.
+	TelemetryEnabled bool `toml:"telemetry_enabled"`
 
-	// Selector page settings
+	// Selector holds settings for the pack-selection page.
 	Selector struct {
+		// LastPath is the filesystem path of the most recently loaded pack instance.
 		LastPath string `toml:"last_path"`
 	} `toml:"selector"`
 
@@ -45,12 +46,11 @@ type CleanerPreset struct {
 	Enabled bool   `toml:"enabled"`
 }
 
-// DefaultConfig returns a config with default values.
+// DefaultConfig returns a Config populated with sensible default values.
 func DefaultConfig() Config {
 	return Config{
 		AutoLoadPreviousState: true,
 		TelemetryEnabled:      true,
-		LastPackPath:          "",
 		Selector: struct {
 			LastPath string `toml:"last_path"`
 		}{
@@ -79,7 +79,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// GetConfigPath returns the path to the config file.
+// GetConfigPath returns the absolute path to the TOML config file,
+// creating the parent directory if it does not yet exist.
 func GetConfigPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -94,8 +95,8 @@ func GetConfigPath() (string, error) {
 	return filepath.Join(configDir, "config.toml"), nil
 }
 
-// Load loads the config from disk.
-// Returns DefaultConfig if the file doesn't exist.
+// Load reads the config file from disk and returns the parsed Config.
+// If the file does not exist, DefaultConfig is returned without error.
 func Load() (Config, error) {
 	path, err := GetConfigPath()
 	if err != nil {
@@ -118,7 +119,7 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// Save writes the config to disk.
+// Save marshals cfg to TOML and writes it to the config file.
 func Save(cfg Config) error {
 	path, err := GetConfigPath()
 	if err != nil {
@@ -133,7 +134,7 @@ func Save(cfg Config) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// Reset resets the config to defaults and saves it.
+// Reset writes DefaultConfig to disk, discarding any previous settings.
 func Reset() error {
 	cfg := DefaultConfig()
 	return Save(cfg)

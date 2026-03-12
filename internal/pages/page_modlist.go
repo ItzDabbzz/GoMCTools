@@ -2,71 +2,27 @@ package pages
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
-	"unicode"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
-	"github.com/charmbracelet/glow/v2/utils"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 	"itzdabbzz.me/gomctools/internal/ui"
 )
 
+// modlistMode controls whether mods are listed in a single section or split
+// by their distribution side (client / server / both).
 type modlistMode int
 
 const (
-	modlistMerged modlistMode = iota
-	modlistSeparated
+	modlistMerged    modlistMode = iota // all mods in one section
+	modlistSeparated                    // separate sections by side
 )
 
-type modlistKeyMap struct {
-	LayoutMerged   key.Binding
-	LayoutSplit    key.Binding
-	ToggleLinks    key.Binding
-	ToggleSide     key.Binding
-	ToggleSource   key.Binding
-	ToggleVersions key.Binding
-	ToggleFilename key.Binding
-	Copy           key.Binding
-	Export         key.Binding
-	Help           key.Binding
-}
-
-func (k modlistKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.ToggleLinks, k.ToggleSide, k.ToggleSource, k.Copy}
-}
-
-func (k modlistKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.LayoutMerged, k.LayoutSplit, k.ToggleLinks, k.ToggleSide},
-		{k.ToggleSource, k.ToggleVersions, k.ToggleFilename, k.Copy},
-		{k.Export, k.Help},
-	}
-}
-
-func defaultModlistKeyMap() modlistKeyMap {
-	return modlistKeyMap{
-		LayoutMerged:   key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "merged layout")),
-		LayoutSplit:    key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "split by side")),
-		ToggleLinks:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "toggle links")),
-		ToggleSide:     key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "toggle side")),
-		ToggleSource:   key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "toggle source")),
-		ToggleVersions: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "toggle versions")),
-		ToggleFilename: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "toggle filename")),
-		Copy:           key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy markdown")),
-		Export:         key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "export file")),
-		Help:           key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help")),
-	}
-}
-
+// modlistPage renders a configurable markdown mod list for the loaded pack.
 type modlistPage struct {
 	state        *ui.SharedState
 	zone         *zone.Manager
@@ -95,24 +51,23 @@ type modlistPage struct {
 	rendererW  int
 	dirty      bool
 
-	// Cache for rendered markdown to avoid re-rendering
+	// Cached markdown and its settings hash to avoid unnecessary re-renders.
 	cachedMarkdown     string
 	cachedSettingsHash uint64
 }
 
-// SetZone wires the page to the root bubblezone manager so click detection
-// happens against the final rendered document instead of an inner layout.
+// SetZone wires the page to the root bubblezone manager.
 func (m *modlistPage) SetZone(z *zone.Manager, prefix string) {
 	m.zone = z
 	m.prefix = prefix
 }
 
+// NewModlistPage constructs a new Modlist Generator page backed by state.
 func NewModlistPage(state *ui.SharedState) ui.Page {
 	vp := viewport.New(0, 0)
 	vp.MouseWheelDelta = 2
 	vp.MouseWheelEnabled = true
 
-	// Load settings from config
 	mode := modlistMerged
 	if state.Config.Modlist.Mode == 1 {
 		mode = modlistSeparated
@@ -133,13 +88,8 @@ func NewModlistPage(state *ui.SharedState) ui.Page {
 	}
 }
 
-func (m *modlistPage) Title() string {
-	return "Modlist Generator"
-}
-
-func (m *modlistPage) Init() tea.Cmd {
-	return nil
-}
+func (m *modlistPage) Title() string { return "Modlist Generator" }
+func (m *modlistPage) Init() tea.Cmd { return nil }
 
 func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	m.detectPackChange()
@@ -151,7 +101,7 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			m.status = fmt.Sprintf("Load failed: %v", typed.Err)
 			return m, nil
 		}
-		m.status = fmt.Sprintf("Loaded %d mods from %s", len(typed.Info.Mods), filepath.Base(typed.Info.InstancePath))
+		m.status = fmt.Sprintf("Loaded %d mods", len(typed.Info.Mods))
 		m.dirty = true
 	case zone.MsgZoneInBounds:
 		if typed.Event.Type == tea.MouseLeft {
@@ -160,7 +110,6 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			}
 		}
 	case tea.WindowSizeMsg:
-		// CRITICAL: Compute layout when we get window dimensions, NOT in View()
 		m.pageWidth = typed.Width
 		m.pageHeight = typed.Height
 		m.updateLayout()
@@ -217,18 +166,16 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// updateLayout computes all layout dimensions when window size is known
+// updateLayout recomputes all dimension fields from the current window size.
 func (m *modlistPage) updateLayout() {
 	const gap = 2
 
-	// Compute content width based on available space
 	contentW := m.pageWidth - ui.DocStyle.GetHorizontalFrameSize() - ui.WindowStyle.GetHorizontalFrameSize()
 	if contentW < 64 {
 		contentW = 64
 	}
 	m.contentW = contentW
 
-	// Compute settings and preview widths
 	settings := m.estimatedSettingsWidth(contentW)
 	if settings < 44 {
 		settings = 44
@@ -242,22 +189,19 @@ func (m *modlistPage) updateLayout() {
 		preview = 32
 		settings = contentW - gap - preview
 	}
-
 	m.settingsW = settings
 	m.previewW = preview
 
-	// Update viewport size
 	if m.previewW > 0 {
 		m.viewport.Width = m.previewW
 	}
 	frame := ui.WindowStyle.GetVerticalFrameSize()
-	avail := m.pageHeight - ui.DocStyle.GetVerticalFrameSize() - frame - 4 // tabs/footer breathing room
+	avail := m.pageHeight - ui.DocStyle.GetVerticalFrameSize() - frame - 4
 	if avail < 8 {
 		avail = 8
 	}
 	m.viewport.Height = avail
 
-	// Check if wrapping changed
 	wrap := preview - 2
 	if wrap < 16 {
 		wrap = 16
@@ -268,78 +212,37 @@ func (m *modlistPage) updateLayout() {
 	}
 }
 
+// rebuild regenerates the markdown (if dirty) and updates the viewport content.
 func (m *modlistPage) rebuild() {
-	// Calculate a hash of current settings to check if we need to regenerate
 	settingsHash := m.calculateSettingsHash()
-
-	// Track if we're generating new content (vs using cached)
-	isNewContent := m.dirty || settingsHash != m.cachedSettingsHash || m.cachedMarkdown == ""
-
-	// Only regenerate markdown if settings have changed or content is dirty
-	if isNewContent {
+	if m.dirty || settingsHash != m.cachedSettingsHash || m.cachedMarkdown == "" {
 		m.markdown = m.generateMarkdown()
 		m.cachedSettingsHash = settingsHash
 		m.cachedMarkdown = m.markdown
 	} else {
-		// Use cached markdown
 		m.markdown = m.cachedMarkdown
 	}
 
-	// Skip expensive markdown rendering when no pack is loaded
 	if m.state == nil || m.state.Pack.InstancePath == "" {
-		// Just use the plain markdown without glamour rendering
 		m.viewport.SetContent(m.markdown)
 	} else {
-		wrapped := m.renderMarkdown(m.markdown)
-		m.viewport.SetContent(wrapped)
+		m.viewport.SetContent(m.renderMarkdown(m.markdown))
 	}
-
-	// Always start at the top for simplicity
 	m.viewport.SetYOffset(0)
-
 	m.dirty = false
 }
 
-func (m *modlistPage) calculateSettingsHash() uint64 {
-	// Simple hash combining all settings that affect markdown output
-	var hash uint64 = 14695981039346656037 // FNV offset basis
-	hash = hash*1099511628211 ^ uint64(m.mode)
-	hash = hash*1099511628211 ^ boolToUint64(m.attachLinks)
-	hash = hash*1099511628211 ^ boolToUint64(m.includeSide)
-	hash = hash*1099511628211 ^ boolToUint64(m.includeSource)
-	hash = hash*1099511628211 ^ boolToUint64(m.includeVersions)
-	hash = hash*1099511628211 ^ boolToUint64(m.includeFilename)
-	// Also include pack path to detect when a different pack is loaded
-	if m.state != nil && m.state.Pack.InstancePath != "" {
-		for _, b := range []byte(m.state.Pack.InstancePath) {
-			hash = hash*1099511628211 ^ uint64(b)
-		}
-	}
-	return hash
-}
-
-func boolToUint64(b bool) uint64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// View now only renders using pre-computed layout values
 func (m *modlistPage) View() string {
-	// If we don't have window dimensions yet, show a simple message
 	if m.pageWidth == 0 || m.pageHeight == 0 {
 		return "Modlist Generator - initializing..."
 	}
 
 	settings := lipgloss.NewStyle().Width(m.settingsW).Render(m.renderSettings())
 
-	// Skip viewport rendering when no pack is loaded - just show status
 	var preview string
 	if m.state != nil && m.state.Pack.InstancePath != "" {
 		preview = lipgloss.NewStyle().Width(m.previewW).Render(m.viewport.View())
 	} else {
-		// Show a simple placeholder when no pack is loaded
 		preview = lipgloss.NewStyle().
 			Width(m.previewW).
 			Height(m.viewport.Height).
@@ -347,7 +250,6 @@ func (m *modlistPage) View() string {
 	}
 
 	gap := strings.Repeat(" ", 2)
-
 	layout := lipgloss.JoinHorizontal(lipgloss.Top, settings, gap, preview)
 	if m.contentW > 0 {
 		layout = lipgloss.NewStyle().Width(m.contentW).Render(layout)
@@ -358,6 +260,7 @@ func (m *modlistPage) View() string {
 	return layout
 }
 
+// renderSettings builds the left-hand settings column.
 func (m *modlistPage) renderSettings() string {
 	left := []string{
 		sectionTitleStyle.Render("Layout"),
@@ -384,9 +287,10 @@ func (m *modlistPage) renderSettings() string {
 	}
 	leftCol := settingsStyle.Width(colW + 4).Render(strings.Join(left, "\n"))
 	rightCol := settingsStyle.Width(colW + 4).Render(strings.Join(right, "\n"))
-
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
 }
+
+// --- click / zone helpers ---
 
 func (m *modlistPage) markOption(id, content string) string {
 	if m.zone == nil {
@@ -397,15 +301,9 @@ func (m *modlistPage) markOption(id, content string) string {
 
 func (m *modlistPage) clickIDs() []string {
 	return []string{
-		"layout-merged",
-		"layout-split",
-		"meta-links",
-		"meta-side",
-		"meta-source",
-		"meta-version",
-		"meta-filename",
-		"action-copy",
-		"action-export",
+		"layout-merged", "layout-split",
+		"meta-links", "meta-side", "meta-source", "meta-version", "meta-filename",
+		"action-copy", "action-export",
 	}
 }
 
@@ -431,260 +329,6 @@ func (m *modlistPage) resolveMouseZone(msg tea.MouseMsg) string {
 		}
 	}
 	return ""
-}
-
-func (m *modlistPage) estimatedSettingsWidth(total int) int {
-	if total == 0 {
-		total = m.pageWidth
-	}
-	if total == 0 {
-		return 48
-	}
-	w := total / 2
-	if w < 44 {
-		w = 44
-	}
-	if w > 64 {
-		w = 64
-	}
-	return w
-}
-
-func (m *modlistPage) generateMarkdown() string {
-	if m.state == nil || m.state.Pack.InstancePath == "" {
-		return "# Modlist\n\nLoad a Prism pack from the Selector tab to generate a list."
-	}
-
-	pack := m.state.Pack
-	name := pack.InstanceName
-	if name == "" {
-		name = "Modlist"
-	}
-
-	b := strings.Builder{}
-	fmt.Fprintf(&b, "# %s\n\n", name)
-
-	if pack.MinecraftVersion != "" || pack.LoaderUID != "" {
-		b.WriteString("- Minecraft [" + valueOr(pack.MinecraftVersion, "unknown") + "]\n")
-		b.WriteString("- " + formatLoader(pack.LoaderUID, pack.LoaderVersion) + "\n\n")
-	}
-
-	mods := append([]ui.IndexedMod(nil), pack.Mods...)
-	if len(mods) == 0 {
-		b.WriteString("_No mods found in this pack._")
-		return b.String()
-	}
-
-	if m.mode == modlistSeparated {
-		client, server, both := splitBySide(mods)
-		writeSection(&b, "Client", client, m)
-		writeSection(&b, "Server", server, m)
-		if len(both) > 0 {
-			writeSection(&b, "Dual/Unspecified", both, m)
-		}
-		return b.String()
-	}
-
-	writeSection(&b, "All Mods", mods, m)
-	return b.String()
-}
-
-func writeSection(b *strings.Builder, title string, mods []ui.IndexedMod, page *modlistPage) {
-	if len(mods) == 0 {
-		return
-	}
-
-	sort.SliceStable(mods, func(i, j int) bool {
-		return strings.ToLower(mods[i].Name) < strings.ToLower(mods[j].Name)
-	})
-
-	fmt.Fprintf(b, "## %s (***%d***)\n", title, len(mods))
-	for _, mod := range mods {
-		b.WriteString(page.formatMod(mod))
-		b.WriteString("\n")
-	}
-	b.WriteString("\n")
-}
-
-func splitBySide(mods []ui.IndexedMod) (client, server, both []ui.IndexedMod) {
-	for _, mod := range mods {
-		side := strings.ToLower(mod.Side)
-		switch {
-		case strings.Contains(side, "client"):
-			client = append(client, mod)
-		case strings.Contains(side, "server"):
-			server = append(server, mod)
-		default:
-			both = append(both, mod)
-		}
-	}
-	return
-}
-
-func (m *modlistPage) formatMod(mod ui.IndexedMod) string {
-	name := mod.Name
-	if name == "" {
-		name = mod.Filename
-	}
-	if name == "" {
-		name = "Unnamed mod"
-	}
-
-	link := ""
-	if m.attachLinks {
-		switch mod.Source {
-		case ui.SourceModrinth:
-			if mod.ModrinthID != "" {
-				link = fmt.Sprintf("https://modrinth.com/mod/%s", mod.ModrinthID)
-			}
-		case ui.SourceCurseforge:
-			if mod.CurseProject != 0 {
-				link = fmt.Sprintf("http://curseforge.com/projects/%d", mod.CurseProject)
-			}
-		}
-		if link == "" {
-			link = mod.DownloadURL
-		}
-		if link != "" {
-			name = fmt.Sprintf("[%s](%s)", name, link)
-		}
-	}
-
-	details := []string{}
-	if m.includeSide && mod.Side != "" {
-		details = append(details, fmt.Sprintf("[**Side**] `%s`", titleCase(strings.ToLower(mod.Side))))
-	}
-	if m.includeSource {
-		source := string(mod.Source)
-		if source == "" {
-			source = "unknown"
-		}
-		details = append(details, fmt.Sprintf("[**Source**] `%s`", titleCase(strings.ToLower(source))))
-	}
-	if m.includeVersions && len(mod.GameVersions) > 0 {
-		details = append(details, fmt.Sprintf("[**Versions**] `MC %s`", strings.Join(mod.GameVersions, ", ")))
-	}
-	if m.includeFilename && mod.Filename != "" {
-		details = append(details, fmt.Sprintf("[**File**] `%s`", mod.Filename))
-	}
-
-	block := strings.Builder{}
-	fmt.Fprintf(&block, "- **%s**\n", name)
-	for _, d := range details {
-		fmt.Fprintf(&block, "  - %s\n", d)
-	}
-	return block.String()
-}
-
-func valueOr(val, fallback string) string {
-	if strings.TrimSpace(val) == "" {
-		return fallback
-	}
-	return val
-}
-
-func titleCase(s string) string {
-	if s == "" {
-		return s
-	}
-	runes := []rune(s)
-	runes[0] = unicode.ToUpper(runes[0])
-	for i := 1; i < len(runes); i++ {
-		runes[i] = unicode.ToLower(runes[i])
-	}
-	return string(runes)
-}
-
-func formatLoader(uid, version string) string {
-	name := loaderLabel(uid)
-	if name == "" {
-		name = valueOr(uid, "Unknown loader")
-	}
-	if version != "" {
-		name += " [" + version + "]"
-	}
-	return name
-}
-
-func loaderLabel(uid string) string {
-	switch strings.TrimSpace(uid) {
-	case "net.neoforged":
-		return "NeoForge"
-	case "net.minecraftforge":
-		return "Forge"
-	case "net.fabricmc.fabric-loader":
-		return "Fabric"
-	case "net.fabricmc.intermediary":
-		return "Fabric (Intermediary)"
-	case "org.quiltmc.quilt-loader":
-		return "Quilt"
-	default:
-		return strings.TrimSpace(uid)
-	}
-}
-
-func (m *modlistPage) renderMarkdown(md string) string {
-	wrap := m.lastWrap
-	if wrap <= 0 {
-		wrap = 80
-	}
-
-	// Only recreate renderer if wrap width actually changed
-	if m.renderer == nil || m.rendererW != wrap {
-		// Cache the previous markdown to avoid re-rendering unchanged content
-		if m.rendererW == wrap && m.renderer != nil && md == m.markdown {
-			// Content and wrap unchanged, renderer is still valid
-			out, err := m.renderer.Render(md)
-			if err == nil {
-				return out
-			}
-		}
-
-		options := []glamour.TermRendererOption{
-			utils.GlamourStyle(styles.AutoStyle, false),
-			glamour.WithWordWrap(wrap),
-		}
-		r, err := glamour.NewTermRenderer(options...)
-		if err != nil {
-			return md
-		}
-		m.renderer = r
-		m.rendererW = wrap
-	}
-
-	out, err := m.renderer.Render(md)
-	if err != nil {
-		return md
-	}
-	return out
-}
-
-func (m *modlistPage) exportToFile() string {
-	if m.markdown == "" {
-		return "Nothing to export"
-	}
-
-	var path string
-	if m.state != nil && m.state.Pack.InstancePath != "" {
-		path = filepath.Join(m.state.Pack.InstancePath, "modlist.md")
-	} else {
-		path = filepath.Join(".", "modlist.md")
-	}
-
-	if err := os.WriteFile(path, []byte(m.markdown), 0o644); err != nil {
-		return fmt.Sprintf("Export failed: %v", err)
-	}
-	return fmt.Sprintf("Exported to %s", path)
-}
-
-func (m *modlistPage) copyMarkdown() string {
-	if m.markdown == "" {
-		return "Nothing to copy"
-	}
-	if err := clipboard.WriteAll(m.markdown); err != nil {
-		return fmt.Sprintf("Copy failed: %v", err)
-	}
-	return "Markdown copied to clipboard"
 }
 
 func (m *modlistPage) handleClick(id string) *modlistPage {
@@ -731,11 +375,11 @@ func (m *modlistPage) setLayout(mode modlistMode) *modlistPage {
 	return m
 }
 
+// saveToConfig writes the current display settings back into the shared config.
 func (m *modlistPage) saveToConfig() {
 	if m.state == nil || m.state.Config == nil {
 		return
 	}
-	// Convert mode to int for config
 	modeInt := 0
 	if m.mode == modlistSeparated {
 		modeInt = 1
@@ -748,6 +392,7 @@ func (m *modlistPage) saveToConfig() {
 	m.state.Config.Modlist.IncludeFilename = m.includeFilename
 }
 
+// detectPackChange marks the page dirty whenever a different pack is loaded.
 func (m *modlistPage) detectPackChange() {
 	if m.state == nil {
 		return
@@ -759,6 +404,24 @@ func (m *modlistPage) detectPackChange() {
 	}
 }
 
+func (m *modlistPage) estimatedSettingsWidth(total int) int {
+	if total == 0 {
+		total = m.pageWidth
+	}
+	if total == 0 {
+		return 48
+	}
+	w := total / 2
+	if w < 44 {
+		w = 44
+	}
+	if w > 64 {
+		w = 64
+	}
+	return w
+}
+
+// checkbox returns "[x]" when on and "[ ]" when off.
 func checkbox(on bool) string {
 	if on {
 		return "[x]"
@@ -766,10 +429,10 @@ func checkbox(on bool) string {
 	return "[ ]"
 }
 
-func (m *modlistPage) ShortHelp() []key.Binding { return m.keys.ShortHelp() }
-
-// FullHelp exposes grouped bindings for the global help menu
+func (m *modlistPage) ShortHelp() []key.Binding  { return m.keys.ShortHelp() }
 func (m *modlistPage) FullHelp() [][]key.Binding { return m.keys.FullHelp() }
+
+// --- styles ---
 
 var (
 	settingsStyle     = lipgloss.NewStyle().Padding(0, 2, 0, 0).MarginRight(3)

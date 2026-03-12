@@ -6,6 +6,9 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
+// Page is the interface that every top-level TUI page must satisfy.
+// It mirrors the tea.Model contract but returns a Page instead of tea.Model
+// so the root Model can store all pages in a single typed slice.
 type Page interface {
 	Title() string
 	Init() tea.Cmd

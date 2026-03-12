@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -13,7 +12,7 @@ import (
 )
 
 func main() {
-	// Load config from disk
+	// Load config from disk.
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
@@ -33,16 +32,10 @@ func main() {
 
 	model := ui.NewModel(state, pages)
 
-	// If auto-load is enabled and there's a last pack path, switch to Selector page
-	// so that its Init() method gets called and triggers the auto-load
+	// When auto-load is configured, start on the Selector page so that its
+	// Init() method fires and triggers the pack load automatically.
 	if cfg.AutoLoadPreviousState && cfg.Selector.LastPath != "" {
-		abs, err := filepath.Abs(cfg.Selector.LastPath)
-		if err == nil {
-			if info, err := os.Stat(abs); err == nil && info.IsDir() {
-				// Switch to Selector page (index 1)
-				model.SetActivePage(1)
-			}
-		}
+		model.SetActivePage(1)
 	}
 
 	program := tea.NewProgram(model, tea.WithMouseAllMotion())
@@ -51,7 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Save config on exit
+	// Persist config on clean exit.
 	if err := config.Save(*state.Config); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not save config: %v\n", err)
 	}

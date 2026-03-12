@@ -1,5 +1,6 @@
 package ui
 
+// clampInt returns val clamped to [min, max].
 func clampInt(val, min, max int) int {
 	if val < min {
 		return min
@@ -10,5 +11,5 @@ func clampInt(val, min, max int) int {
 	return val
 }
 
-// Exported wrapper
+// ClampInt is the exported wrapper around clampInt, available to pages packages.
 func ClampInt(val, min, max int) int { return clampInt(val, min, max) }

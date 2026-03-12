@@ -1,11 +1,7 @@
 package pages
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -22,6 +18,7 @@ import (
 	"itzdabbzz.me/gomctools/internal/ui"
 )
 
+// cleanerInputMode describes whether the user is currently editing a preset.
 type cleanerInputMode int
 
 const (
@@ -30,86 +27,8 @@ const (
 	cleanerInputEdit
 )
 
-type cleanerPreset struct {
-	Name    string `json:"name"`
-	Pattern string `json:"pattern"`
-	Enabled bool   `json:"enabled"`
-	BuiltIn bool   `json:"-"`
-}
-
-type cleanerKeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Toggle key.Binding
-	Clean  key.Binding
-	New    key.Binding
-	Edit   key.Binding
-	Delete key.Binding
-	Save   key.Binding
-	Help   key.Binding
-	Debug  key.Binding
-}
-
-func (k cleanerKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Toggle, k.Clean, k.Help}
-}
-
-func (k cleanerKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Toggle, k.Clean},
-		{k.New, k.Edit, k.Delete, k.Save, k.Help, k.Debug},
-	}
-}
-
-func defaultCleanerKeyMap() cleanerKeyMap {
-	return cleanerKeyMap{
-		Up: key.NewBinding(
-			key.WithKeys("up", "k"),
-			key.WithHelp("up/k", "select previous"),
-		),
-		Down: key.NewBinding(
-			key.WithKeys("down", "j"),
-			key.WithHelp("down/j", "select next"),
-		),
-		Toggle: key.NewBinding(
-			key.WithKeys(" "),
-			key.WithHelp("space", "toggle preset"),
-		),
-		Clean: key.NewBinding(
-			key.WithKeys("c"),
-			key.WithHelp("c", "run cleaner"),
-		),
-		New: key.NewBinding(
-			key.WithKeys("n"),
-			key.WithHelp("n", "new preset"),
-		),
-		Edit: key.NewBinding(
-			key.WithKeys("e"),
-			key.WithHelp("e", "edit preset"),
-		),
-		Delete: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "delete preset"),
-		),
-		Save: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "save presets"),
-		),
-		Help: key.NewBinding(
-			key.WithKeys("?"),
-			key.WithHelp("?", "toggle help"),
-		),
-		Debug: key.NewBinding(
-			key.WithKeys("F12"),
-			key.WithHelp("F12", "debug mode"),
-		),
-	}
-}
-
-type cleanerConfig struct {
-	Custom []cleanerPreset `json:"custom_presets"`
-}
-
+// cleanerPage is the Pack Cleaner page that lets users selectively delete
+// generated or unwanted files from a loaded Prism Launcher instance.
 type cleanerPage struct {
 	state     *ui.SharedState
 	zone      *zone.Manager
@@ -146,6 +65,7 @@ type cleanerPage struct {
 	debugMode bool
 }
 
+// NewCleanerPage constructs a new Pack Cleaner page backed by state.
 func NewCleanerPage(state *ui.SharedState) ui.Page {
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Preset name"
@@ -164,19 +84,19 @@ func NewCleanerPage(state *ui.SharedState) ui.Page {
 	list.MouseWheelEnabled = true
 	list.MouseWheelDelta = 2
 
-	// Load presets from global config
+	// Merge built-in presets with any previously saved custom ones.
 	presets := defaultCleanerPresets()
 	if len(state.Config.Cleaner.CustomPresets) > 0 {
-		customPresets := make([]cleanerPreset, 0, len(state.Config.Cleaner.CustomPresets))
+		custom := make([]cleanerPreset, 0, len(state.Config.Cleaner.CustomPresets))
 		for _, cp := range state.Config.Cleaner.CustomPresets {
-			customPresets = append(customPresets, cleanerPreset{
+			custom = append(custom, cleanerPreset{
 				Name:    cp.Name,
 				Pattern: cp.Pattern,
 				Enabled: cp.Enabled,
 				BuiltIn: false,
 			})
 		}
-		presets = append(presets, normalizeCustom(customPresets)...)
+		presets = append(presets, normalizeCustom(custom)...)
 	}
 
 	return &cleanerPage{
@@ -192,10 +112,9 @@ func NewCleanerPage(state *ui.SharedState) ui.Page {
 		focusIdx:   0,
 		workErrors: nil,
 	}
-
 }
 
-// SetZone wires bubblezone; cleaner currently keyboard-driven but keeps parity with other pages.
+// SetZone wires the page to the root bubblezone manager.
 func (c *cleanerPage) SetZone(z *zone.Manager, prefix string) {
 	c.zone = z
 	c.prefix = prefix
@@ -204,6 +123,8 @@ func (c *cleanerPage) SetZone(z *zone.Manager, prefix string) {
 func (c *cleanerPage) Title() string { return "Pack Cleaner" }
 func (c *cleanerPage) Init() tea.Cmd { return nil }
 
+// CaptureGlobalNav returns true while a text input is active, preventing
+// tab/shift-tab from switching pages unexpectedly.
 func (c *cleanerPage) CaptureGlobalNav() bool {
 	return c.inputMode != cleanerInputNone
 }
@@ -235,7 +156,9 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		if m.Index+1 < m.Total {
 			return c, c.runCleanStepCmd(m.Index + 1)
 		}
-		return c, func() tea.Msg { return cleanerDoneMsg{Duration: time.Since(c.workStart), Errors: c.workErrors} }
+		return c, func() tea.Msg {
+			return cleanerDoneMsg{Duration: time.Since(c.workStart), Errors: c.workErrors}
+		}
 	case cleanerDoneMsg:
 		c.running = false
 		c.elapsed = m.Duration
@@ -270,49 +193,34 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		const minHorizontalWidth = 82
 		isHorizontal := contentWidth >= minHorizontalWidth
 
-		// Reserve minimal headroom for tabs, footer, and status line
-		// For small screens, be more conservative with reserved space
-		reserved := 6 // tabs + footer + minimal padding
+		reserved := 6
 		if m.Height > 30 {
-			reserved = 8 // More space on larger screens
+			reserved = 8
 		}
 		heightBudget := m.Height - reserved
 
 		if isHorizontal {
-			// Side-by-side: allocate height for left column only (right column auto-sizes)
 			if heightBudget < cleanerColHeight {
 				heightBudget = cleanerColHeight
 			}
 			c.list.Width = cleanerListWidth()
 			c.list.Height = heightBudget
-
 			rightWidth := contentWidth - cleanerColWidth - cleanerGapWidth
 			if rightWidth < 32 {
 				rightWidth = 32
 			}
 			c.setHelpWidth(rightWidth)
 		} else {
-			// Vertical layout: preset list above, details below
-			// In vertical mode, give most space to the preset list
-			// Reserve just enough for the details section (about 5-6 lines)
-			reservedRight := 6 // Details: title, type, elapsed, progress bar, progress text
+			reservedRight := 6
 			heightBudget -= reservedRight
-
-			// Give preset list a generous portion of remaining space
-			// Use floating point to avoid truncation issues
 			if m.Height < 25 {
-				// On very small screens, preset list gets 75% of available space
 				heightBudget = int(float64(heightBudget) * 0.75)
 			} else {
-				// On larger screens, preset list gets 70% of available space
 				heightBudget = int(float64(heightBudget) * 0.70)
 			}
-
-			// Ensure minimum height for usability - at least 10 lines
 			if heightBudget < 10 {
 				heightBudget = 10
 			}
-
 			c.list.Width = contentWidth
 			c.list.Height = heightBudget
 			c.setHelpWidth(contentWidth)
@@ -342,16 +250,11 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 func (c *cleanerPage) View() string {
 	contentWidth := c.availableContentWidth()
-
-	// Minimum width needed for side-by-side layout:
-	// 48 (left) + 2 (gap) + 32 (right min) = 82 chars
 	const minHorizontalWidth = 82
-
 	isHorizontal := contentWidth >= minHorizontalWidth
 
 	var body string
 	if isHorizontal {
-		// Side-by-side layout
 		leftTotal := cleanerColWidth
 		rightTotal := contentWidth - leftTotal - cleanerGapWidth
 		if rightTotal < 32 {
@@ -360,14 +263,11 @@ func (c *cleanerPage) View() string {
 		left := c.viewPresetList(leftTotal)
 		right := c.viewDetail(rightTotal)
 		spacer := strings.Repeat(" ", cleanerGapWidth)
-
 		row := lipgloss.JoinHorizontal(lipgloss.Top, left, spacer, right)
 		body = lipgloss.NewStyle().Width(contentWidth).Render(row)
 	} else {
-		// Vertical layout for narrow screens
 		left := c.viewPresetList(contentWidth)
 		right := c.viewDetail(contentWidth)
-
 		vertical := lipgloss.JoinVertical(lipgloss.Left, left, right)
 		body = lipgloss.NewStyle().Width(contentWidth).Render(vertical)
 	}
@@ -376,18 +276,16 @@ func (c *cleanerPage) View() string {
 		body += "\n" + statusStyle.Render(c.status)
 	}
 
-	// Debug mode: show screen size at top right
 	if c.debugMode {
 		debugInfo := fmt.Sprintf("DEBUG: %dx%d | W:%d H:%d", c.pageWidth, c.pageHeight, contentWidth, c.list.Height)
-		debugLine := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("11")).
-			Render(debugInfo)
-		// Prepend debug info on a new line
+		debugLine := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render(debugInfo)
 		body = debugLine + "\n" + body
 	}
 
 	return body
 }
+
+// --- key handling ---
 
 func (c *cleanerPage) handleKey(msg tea.KeyMsg) (ui.Page, tea.Cmd) {
 	if c.inputMode != cleanerInputNone {
@@ -441,7 +339,6 @@ func (c *cleanerPage) handleKey(msg tea.KeyMsg) (ui.Page, tea.Cmd) {
 	case key.Matches(msg, c.keys.Debug):
 		c.debugMode = !c.debugMode
 		return c, nil
-
 	}
 
 	return c, nil
@@ -521,6 +418,8 @@ func (c *cleanerPage) mergePresets(custom []cleanerPreset) {
 	c.selected = ui.ClampInt(c.selected, 0, len(c.presets)-1)
 }
 
+// --- cleaning commands ---
+
 func (c *cleanerPage) startClean() (ui.Page, tea.Cmd) {
 	if c.running {
 		return c, nil
@@ -541,14 +440,13 @@ func (c *cleanerPage) startClean() (ui.Page, tea.Cmd) {
 		return c, nil
 	}
 
-	// pre-count items for progress
 	total := 0
 	for _, p := range enabled {
 		count, _ := countEntries(c.state.Pack.MinecraftDir, p)
 		total += count
 	}
 	if total == 0 {
-		total = len(enabled) // fallback to preset-based progress
+		total = len(enabled)
 	}
 
 	c.workQueue = enabled
@@ -580,46 +478,6 @@ func (c *cleanerPage) runCleanStepCmd(index int) tea.Cmd {
 	}
 }
 
-func deletePreset(root string, preset cleanerPreset) (int, error) {
-	if root == "" {
-		return 0, errors.New("missing root path")
-	}
-
-	pattern := strings.TrimSpace(preset.Pattern)
-	if pattern == "" {
-		return 0, nil
-	}
-	pattern = normalizePattern(pattern)
-
-	rel := strings.TrimPrefix(pattern, string(os.PathSeparator))
-	target := filepath.Clean(filepath.Join(root, rel))
-
-	if !strings.HasPrefix(target, filepath.Clean(root)) {
-		return 0, fmt.Errorf("refusing to delete outside root: %s", target)
-	}
-	if target == filepath.Clean(root) {
-		return 0, fmt.Errorf("refusing to delete root directory")
-	}
-
-	info, err := os.Stat(target)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return 0, nil
-		}
-		return 0, err
-	}
-
-	count := 1
-	if info.IsDir() {
-		c, cerr := countDirEntries(target)
-		if cerr == nil {
-			count = c
-		}
-		return count, os.RemoveAll(target)
-	}
-	return count, os.Remove(target)
-}
-
 func (c *cleanerPage) loadCustomPresetsCmd(root string) tea.Cmd {
 	return func() tea.Msg {
 		custom, err := readCleanerConfig(root)
@@ -634,11 +492,8 @@ func (c *cleanerPage) saveCustomPresetsCmd() tea.Cmd {
 	}
 	c.saving = true
 	presets := filterCustom(c.presets)
-
-	// Save to global config
 	c.saveToGlobalConfig()
 
-	// Also save to pack-specific config if pack is loaded
 	if c.state.Pack.MinecraftDir != "" {
 		root := c.state.Pack.MinecraftDir
 		return func() tea.Msg {
@@ -646,13 +501,11 @@ func (c *cleanerPage) saveCustomPresetsCmd() tea.Cmd {
 			return cleanerSavedMsg{Err: err}
 		}
 	}
-
-	// No pack loaded, just return success
-	return func() tea.Msg {
-		return cleanerSavedMsg{Err: nil}
-	}
+	return func() tea.Msg { return cleanerSavedMsg{Err: nil} }
 }
 
+// saveToGlobalConfig copies the current custom presets into the shared config
+// so they are persisted to disk when the application exits.
 func (c *cleanerPage) saveToGlobalConfig() {
 	if c.state == nil || c.state.Config == nil {
 		return
@@ -668,159 +521,7 @@ func (c *cleanerPage) saveToGlobalConfig() {
 	}
 }
 
-func readCleanerConfig(root string) ([]cleanerPreset, error) {
-	if root == "" {
-		return nil, errors.New("missing root path")
-	}
-	path := filepath.Join(root, "gomctools.cleaner.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var cfg cleanerConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-	return normalizeCustom(cfg.Custom), nil
-}
-
-func countEntries(root string, preset cleanerPreset) (int, error) {
-	target := filepath.Clean(filepath.Join(root, normalizePattern(preset.Pattern)))
-	if !strings.HasPrefix(target, filepath.Clean(root)) {
-		return 0, fmt.Errorf("outside root")
-	}
-	info, err := os.Stat(target)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	if info.IsDir() {
-		return countDirEntries(target)
-	}
-	return 1, nil
-}
-
-func countDirEntries(dir string) (int, error) {
-	count := 0
-	walkErr := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		count++
-		return nil
-	})
-	if walkErr != nil {
-		return count, walkErr
-	}
-	if count == 0 {
-		count = 1 // empty dirs still count as one unit of work
-	}
-	return count, nil
-}
-
-func writeCleanerConfig(root string, presets []cleanerPreset) error {
-	if root == "" {
-		return errors.New("missing root path")
-	}
-	path := filepath.Join(root, "gomctools.cleaner.json")
-	cfg := cleanerConfig{Custom: normalizeCustom(presets)}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
-}
-
-func normalizePattern(p string) string {
-	p = strings.TrimSpace(p)
-	p = strings.TrimPrefix(p, "./")
-	p = strings.TrimPrefix(p, string(os.PathSeparator))
-	return p
-}
-
-func normalizeCustom(list []cleanerPreset) []cleanerPreset {
-	out := make([]cleanerPreset, 0, len(list))
-	for _, p := range list {
-		if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.Pattern) == "" {
-			continue
-		}
-		p.BuiltIn = false
-		p.Pattern = normalizePattern(p.Pattern)
-		out = append(out, p)
-	}
-	return out
-}
-
-func filterCustom(list []cleanerPreset) []cleanerPreset {
-	out := []cleanerPreset{}
-	for _, p := range list {
-		if p.BuiltIn {
-			continue
-		}
-		out = append(out, p)
-	}
-	return out
-}
-
-func defaultCleanerPresets() []cleanerPreset {
-	names := []string{
-		".cache/",
-		".curseclient/",
-		".mixin.out/",
-		".probe/",
-		".vscode/",
-		"bluemap/",
-		"cachecoremods/",
-		"crash-reports/",
-		"data/",
-		"Distant_Horizons_server_data/",
-		"downloads/",
-		"dynamic-data-pack-cache/",
-		"dynamic-resource-pack-cache/",
-		"fancymenu_data/",
-		"journeymap/",
-		"local/",
-		"logs/",
-		"midi_files/",
-		"moddata/",
-		"moonlight-global-datapacks/",
-		"patchouli_books/",
-		"saves/",
-		"screenshots/",
-		"waypoints/",
-		"command_history.txt",
-		"patchouli_data.json",
-		"servers.dat",
-		"servers.dat_old",
-		"usercache.json",
-		"usernamecache.json",
-		"modlist.html",
-		"kubejs/",
-	}
-
-	presets := make([]cleanerPreset, 0, len(names))
-	for _, n := range names {
-		presets = append(presets, cleanerPreset{Name: displayName(n), Pattern: normalizePattern(n), Enabled: false, BuiltIn: true})
-	}
-	return presets
-}
-
-func displayName(path string) string {
-	trimmed := strings.TrimSuffix(path, string(os.PathSeparator))
-	trimmed = strings.TrimPrefix(trimmed, ".")
-	if trimmed == "" {
-		return path
-	}
-	return trimmed
-}
+// --- view helpers ---
 
 func (c *cleanerPage) viewPresetList(totalWidth int) string {
 	if len(c.presets) == 0 {
@@ -855,11 +556,10 @@ func (c *cleanerPage) viewPresetList(totalWidth int) string {
 
 	content := strings.Join(lines, "\n")
 	c.list.SetContent(content)
-	// Ensure viewport height is set (it should be set by WindowSizeMsg)
 	if c.list.Height == 0 {
 		c.list.Height = cleanerColHeight
 	}
-	c.list.SetYOffset(c.list.YOffset) // Refresh viewport
+	c.list.SetYOffset(c.list.YOffset + 10)
 	c.ensureSelectionVisible()
 	return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
 }
@@ -905,9 +605,7 @@ func (c *cleanerPage) viewDetail(width int) string {
 	if !c.running && c.lastDuration > 0 {
 		elapsed = c.lastDuration
 	}
-
-	timerLine := fmt.Sprintf("Elapsed: %s", elapsed.Truncate(10*time.Millisecond))
-	detail = append(detail, timerLine)
+	detail = append(detail, fmt.Sprintf("Elapsed: %s", elapsed.Truncate(10*time.Millisecond)))
 
 	if c.running {
 		detail = append(detail, c.progress.View())
@@ -921,20 +619,27 @@ func (c *cleanerPage) viewDetail(width int) string {
 	return cleanerRightColStyle.Width(width).Render(strings.Join(detail, "\n"))
 }
 
-func (c *cleanerPage) estimatedColumnWidth() int { return cleanerColWidth }
+// --- layout helpers ---
 
-func (c *cleanerPage) progressPercent(index, totalPresets int) float64 {
-	total := c.totalItems
-	if total > 0 {
-		if c.processed <= 0 {
-			return 0
-		}
-		return float64(c.processed) / float64(total)
+func (c *cleanerPage) availableContentWidth() int {
+	width := c.pageWidth
+	if width == 0 {
+		return cleanerColWidth*2 + cleanerColStyle.GetHorizontalFrameSize() + 4
 	}
-	if totalPresets == 0 {
-		return 0
+	inner := width - ui.DocStyle.GetHorizontalFrameSize()
+	content := inner - ui.WindowStyle.GetHorizontalFrameSize()
+	if content < 40 {
+		content = 40
 	}
-	return float64(index+1) / float64(totalPresets)
+	return content
+}
+
+func (c *cleanerPage) setHelpWidth(total int) {
+	usable := total - cleanerColStyle.GetHorizontalFrameSize()
+	if usable < 16 {
+		usable = 16
+	}
+	c.helpWidth = usable
 }
 
 func (c *cleanerPage) ensureSelectionVisible() {
@@ -954,32 +659,26 @@ func (c *cleanerPage) ensureSelectionVisible() {
 	}
 }
 
-func (c *cleanerPage) setHelpWidth(total int) {
-	usable := total - cleanerColStyle.GetHorizontalFrameSize()
-	if usable < 16 {
-		usable = 16
+func (c *cleanerPage) progressPercent(index, totalPresets int) float64 {
+	total := c.totalItems
+	if total > 0 {
+		if c.processed <= 0 {
+			return 0
+		}
+		return float64(c.processed) / float64(total)
 	}
-	c.helpWidth = usable
+	if totalPresets == 0 {
+		return 0
+	}
+	return float64(index+1) / float64(totalPresets)
 }
 
-func (c *cleanerPage) availableContentWidth() int {
-	width := c.pageWidth
-	if width == 0 {
-		// Default width when not yet initialized
-		return cleanerColWidth*2 + cleanerColStyle.GetHorizontalFrameSize() + 4
-	}
-	inner := width - ui.DocStyle.GetHorizontalFrameSize()
-	// Don't enforce ui.MinWidth here - it breaks responsive layout on narrow screens
-	// Let the layout system handle small screens gracefully
-	content := inner - ui.WindowStyle.GetHorizontalFrameSize()
-	// Minimum width for a usable single-column interface
-	minWidth := 40
-	if content < minWidth {
-		content = minWidth
-	}
-	return content
-}
+func (c *cleanerPage) estimatedColumnWidth() int { return cleanerColWidth }
 
+func (c cleanerPage) ShortHelp() []key.Binding  { return c.keys.ShortHelp() }
+func (c cleanerPage) FullHelp() [][]key.Binding { return c.keys.FullHelp() }
+
+// wrapToWidth clips or wraps s to the given terminal column width.
 func wrapToWidth(s string, width int) string {
 	if width <= 0 {
 		return s
@@ -987,7 +686,10 @@ func wrapToWidth(s string, width int) string {
 	return lipgloss.NewStyle().MaxWidth(width).Width(width).Render(s)
 }
 
+// --- message types ---
+
 type cleanerTickMsg struct{}
+
 type cleanerStepMsg struct {
 	Index  int
 	Total  int
@@ -995,19 +697,20 @@ type cleanerStepMsg struct {
 	Err    error
 	Count  int
 }
+
 type cleanerDoneMsg struct {
 	Duration time.Duration
 	Errors   []string
 }
+
 type cleanerLoadedMsg struct {
 	Custom []cleanerPreset
 	Err    error
 }
+
 type cleanerSavedMsg struct{ Err error }
 
-func (c cleanerPage) ShortHelp() []key.Binding { return c.keys.ShortHelp() }
-
-func (c cleanerPage) FullHelp() [][]key.Binding { return c.keys.FullHelp() }
+// --- styles & layout constants ---
 
 var (
 	presetStyle          = lipgloss.NewStyle()

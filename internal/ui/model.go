@@ -2,8 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -27,7 +25,7 @@ type Model struct {
 
 const (
 	MinWidth  = 60
-	MinHeight = 27
+	MinHeight = 15
 )
 
 func NewModel(state *SharedState, pages []Page) Model {
@@ -41,25 +39,13 @@ func NewModel(state *SharedState, pages []Page) Model {
 	return Model{pages: pages, zone: z, zonePrefix: z.NewPrefix(), state: state, pageZones: map[int]string{}, help: help.New()}
 }
 
+// Init runs the active page's Init command.
+// Auto-loading is handled entirely by selectorPage.Init() when the Selector
+// page is the active page on startup (set by main.go).
 func (m Model) Init() tea.Cmd {
 	if len(m.pages) == 0 {
 		return nil
 	}
-
-	// Check if auto-load is enabled and we're on the home page (index 0)
-	// If so, trigger auto-load by returning a command to load the pack
-	if m.activePage == 0 && m.state != nil && m.state.Config != nil {
-		if m.state.Config.AutoLoadPreviousState && m.state.Config.Selector.LastPath != "" {
-			abs, err := filepath.Abs(m.state.Config.Selector.LastPath)
-			if err == nil {
-				if info, err := os.Stat(abs); err == nil && info.IsDir() {
-					// Return a command to load the pack (this will trigger PackLoadedMsg)
-					return LoadPackCmd(abs)
-				}
-			}
-		}
-	}
-
 	return m.pages[m.activePage].Init()
 }
 
@@ -149,6 +135,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmd, resizeCmd)
 }
 
+// View renders the full TUI frame: tab bar, active page (or help overlay), and footer.
 func (m Model) View() string {
 	if len(m.pages) == 0 {
 		return "No pages available"
@@ -184,12 +171,10 @@ func (m Model) View() string {
 	rowLines := strings.Split(renderTabs(m.zone, m.zonePrefix, titles, m.activePage), "\n")
 	lastIdx := len(rowLines) - 1
 	for i, line := range rowLines {
-		// Only extend the bottom tab line to keep a single horizontal connector.
 		if i != lastIdx {
 			rowLines[i] = line
 			continue
 		}
-
 		endChar := "┐"
 		fillWidth := innerWidth - lipgloss.Width(line) - 1
 		if fillWidth < 0 {
@@ -198,33 +183,21 @@ func (m Model) View() string {
 		rowLines[i] = line + borderFillStyle.Render(strings.Repeat("─", fillWidth)+endChar)
 	}
 	row := strings.Join(rowLines, "\n")
-	// Build the initial footer with global default bindings
-	// Build combined bindings: page short-help (if available) + global defaults
-	combined := []key.Binding{}
-	if provider, ok := m.pages[m.activePage].(ShortHelpProvider); ok {
-		combined = append(combined, provider.ShortHelp()...)
-	}
-	combined = append(combined, DefaultHelpBindings()...)
-	m.help.Width = innerWidth
-	footer := m.help.ShortHelpView(combined)
 
-	// If the full help overlay is requested, render it in the footer area
+	// Footer: when the full help overlay is open, show a minimal "close" hint
+	// so the footer doesn't duplicate what is already visible in the content area.
+	m.help.Width = innerWidth
+	var footer string
 	if m.help.ShowAll {
-		groups := [][]key.Binding{}
-		for _, p := range m.pages {
-			if hf, ok := p.(interface{ FullHelp() [][]key.Binding }); ok {
-				cols := hf.FullHelp()
-				for _, c := range cols {
-					groups = append(groups, c)
-				}
-				continue
-			}
-			if sh, ok := p.(ShortHelpProvider); ok {
-				groups = append(groups, sh.ShortHelp())
-			}
+		closeKey := key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "close help"))
+		footer = m.help.ShortHelpView([]key.Binding{closeKey})
+	} else {
+		combined := []key.Binding{}
+		if provider, ok := m.pages[m.activePage].(ShortHelpProvider); ok {
+			combined = append(combined, provider.ShortHelp()...)
 		}
-		m.help.Width = innerWidth
-		footer = m.help.FullHelpView(groups)
+		combined = append(combined, DefaultHelpBindings()...)
+		footer = m.help.ShortHelpView(combined)
 	}
 
 	contentWidth := innerWidth - windowStyle.GetHorizontalFrameSize()
@@ -237,39 +210,27 @@ func (m Model) View() string {
 	footerHeight := lipgloss.Height(footer)
 
 	frameH := windowStyle.GetVerticalFrameSize()
-	minContentHeight := frameH + 1        // at least one line of content inside frame
-	contentHeight := minContentHeight + 6 // fallback if we have no window size yet
+	minContentHeight := frameH + 1
+	contentHeight := minContentHeight + 6
 	if m.height > 0 {
-		contentHeight = availableHeight - tabHeight - footerHeight - 1 // extra line between row/content/footer
+		contentHeight = availableHeight - tabHeight - footerHeight - 1
 		if contentHeight < minContentHeight {
 			contentHeight = minContentHeight
 		}
 	}
 
+	// Content: when help overlay is open render it here (single location);
+	// otherwise render the active page as normal.
 	var content string
 	if m.help.ShowAll {
-		// Build columns/groups for full help using each page's FullHelp when available,
-		// otherwise fall back to the page's ShortHelp.
-		groups := [][]key.Binding{}
-		for _, p := range m.pages {
-			if hf, ok := p.(interface{ FullHelp() [][]key.Binding }); ok {
-				cols := hf.FullHelp()
-				for _, c := range cols {
-					groups = append(groups, c)
-				}
-				continue
-			}
-			if sh, ok := p.(ShortHelpProvider); ok {
-				groups = append(groups, sh.ShortHelp())
-			}
-		}
-
-		helpContent := m.help.FullHelpView(groups)
+		groups := buildHelpGroups(m.pages)
+		m.help.Width = innerWidth
+		helpText := m.help.FullHelpView(groups)
 		content = windowStyle.
 			Width(contentWidth).
 			Height(contentHeight).
 			MaxHeight(contentHeight).
-			Render(helpContent)
+			Render(helpText)
 	} else {
 		content = windowStyle.
 			Width(contentWidth).
@@ -285,7 +246,6 @@ func (m Model) View() string {
 
 	doc := strings.Builder{}
 	doc.WriteString(row)
-
 	doc.WriteString("\n")
 	doc.WriteString(content)
 	if bottom != "" {
@@ -307,6 +267,7 @@ func (m Model) View() string {
 	return rendered
 }
 
+// pageTitles returns the Title() string for every registered page.
 func pageTitles(pages []Page) []string {
 	titles := make([]string, 0, len(pages))
 	for _, p := range pages {
@@ -315,6 +276,27 @@ func pageTitles(pages []Page) []string {
 	return titles
 }
 
+// buildHelpGroups collects keybinding columns from every page.
+// Pages that implement FullHelp() contribute their full columns; pages that
+// only implement ShortHelpProvider contribute a single column of short keys.
+func buildHelpGroups(pages []Page) [][]key.Binding {
+	groups := [][]key.Binding{}
+	for _, p := range pages {
+		if hf, ok := p.(interface{ FullHelp() [][]key.Binding }); ok {
+			for _, col := range hf.FullHelp() {
+				groups = append(groups, col)
+			}
+			continue
+		}
+		if sh, ok := p.(ShortHelpProvider); ok {
+			groups = append(groups, sh.ShortHelp())
+		}
+	}
+	return groups
+}
+
+// findPageIndexByTitle returns the index of the first page whose Title()
+// matches title (case-insensitive), or -1 if not found.
 func findPageIndexByTitle(pages []Page, title string) int {
 	for i, p := range pages {
 		if strings.EqualFold(p.Title(), title) {
@@ -324,6 +306,8 @@ func findPageIndexByTitle(pages []Page, title string) int {
 	return -1
 }
 
+// resizeCmd emits a synthetic WindowSizeMsg so that the newly active page
+// receives correct dimensions immediately after a tab switch.
 func (m Model) resizeCmd() tea.Cmd {
 	if m.width == 0 || m.height == 0 {
 		return nil
@@ -332,10 +316,12 @@ func (m Model) resizeCmd() tea.Cmd {
 	return func() tea.Msg { return tea.WindowSizeMsg{Width: w, Height: h} }
 }
 
+// SetActivePage changes the active page to the given index, clamped to valid bounds.
 func (m *Model) SetActivePage(index int) {
 	m.activePage = clampInt(index, 0, len(m.pages)-1)
 }
 
+// GetActivePage returns the index of the currently displayed page.
 func (m Model) GetActivePage() int {
 	return m.activePage
 }

@@ -16,13 +16,15 @@ import (
 	"itzdabbzz.me/gomctools/internal/config"
 )
 
-// SharedState keeps data that multiple pages need, such as the currently loaded pack.
+// SharedState is the single source of truth shared across all pages.
+// It holds the currently loaded pack and the active configuration.
 type SharedState struct {
 	Config        *config.Config
 	Pack          PackInfo
 	LastLoadError string
 }
 
+// NewSharedState creates a SharedState pre-populated with DefaultConfig.
 func NewSharedState() *SharedState {
 	cfg := config.DefaultConfig()
 	return &SharedState{
@@ -45,7 +47,7 @@ type PackInfo struct {
 	Counts           ModCounts
 }
 
-// IndexedMod captures the important parts of a Prism .index entry.
+// IndexedMod captures the relevant fields from a Prism Launcher .index TOML entry.
 type IndexedMod struct {
 	Name          string
 	Filename      string
@@ -129,11 +131,15 @@ type indexCurseforge struct {
 	FileID    int `toml:"file-id"`
 }
 
+// PackLoadedMsg is emitted by LoadPackCmd when pack loading completes.
+// If Err is non-nil the load failed and Info should be considered empty.
 type PackLoadedMsg struct {
 	Info PackInfo
 	Err  error
 }
 
+// LoadPackCmd returns a Cmd that loads the Prism instance rooted at root
+// and broadcasts the result as a PackLoadedMsg.
 func LoadPackCmd(root string) tea.Cmd {
 	return func() tea.Msg {
 		info, err := LoadPack(root)

@@ -42,6 +42,8 @@ var (
 	BorderFillStyle = borderFillStyle
 )
 
+// renderTabs builds the horizontal tab bar, marking each tab with a bubblezone
+// ID so mouse clicks can switch pages.
 func renderTabs(z *zone.Manager, prefix string, titles []string, active int) string {
 	var renderedTabs []string
 	for i, t := range titles {

@@ -121,9 +121,8 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 		s.selectedPath = typed.Info.InstancePath
 		s.status = fmt.Sprintf("Loaded %d mods from %s", typed.Info.Counts.Total, filepath.Base(typed.Info.InstancePath))
-		// Save the path to config
+		// Persist the path so it can be auto-loaded on next launch.
 		s.state.Config.Selector.LastPath = s.selectedPath
-		s.state.Config.LastPackPath = s.selectedPath
 		return s, tea.Batch(cmds...)
 	case tea.WindowSizeMsg:
 		s.pageWidth = typed.Width
@@ -165,7 +164,6 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 			// Save the path to config immediately (even if pack load fails)
 			s.state.Config.Selector.LastPath = abs
-			s.state.Config.LastPackPath = abs
 
 			cmds = append(cmds, s.fp.Init(), spinner.Tick, ui.LoadPackCmd(abs))
 		}
