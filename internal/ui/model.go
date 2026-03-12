@@ -23,6 +23,7 @@ type Model struct {
 	state         *SharedState
 	pageZones     map[int]string
 	help          help.Model
+	keys          GlobalKeyMap
 }
 
 const (
@@ -38,12 +39,18 @@ func NewModel(state *SharedState, pages []Page) Model {
 		pages = []Page{}
 	}
 	z := zone.New()
-	return Model{pages: pages, zone: z, zonePrefix: z.NewPrefix(), state: state, pageZones: map[int]string{}, help: help.New()}
+	return Model{
+		pages:      pages,
+		zone:       z,
+		zonePrefix: z.NewPrefix(),
+		state:      state,
+		pageZones:  map[int]string{},
+		help:       help.New(),
+		keys:       DefaultKeys,
+	}
 }
 
 // Init runs the active page's Init command.
-// Auto-loading is handled entirely by selectorPage.Init() when the Selector
-// page is the active page on startup (set by main.go).
 func (m Model) Init() tea.Cmd {
 	if len(m.pages) == 0 {
 		return nil
@@ -97,18 +104,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updatedPage, cmd := m.pages[m.activePage].Update(msg)
 		m.pages[m.activePage] = updatedPage
 		return m, cmd
+	case NavigateMsg:
+		m.activePage = clampInt(msg.Page, 0, len(m.pages)-1)
+		return m, m.resizeCmd()
+	case ToggleHelpMsg:
+		m.help.ShowAll = !m.help.ShowAll
+		return m, nil
 	case tea.KeyMsg:
 		if allowGlobalNav {
-			switch msg.String() {
-			case "ctrl+c", "q":
+			switch {
+			case key.Matches(msg, m.keys.Quit):
 				return m, tea.Quit
-			case "right", "l", "n", "tab":
+			case key.Matches(msg, m.keys.NextTab):
 				m.activePage = clampInt(m.activePage+1, 0, len(m.pages)-1)
 				return m, m.resizeCmd()
-			case "left", "h", "p", "shift+tab":
+			case key.Matches(msg, m.keys.PrevTab):
 				m.activePage = clampInt(m.activePage-1, 0, len(m.pages)-1)
 				return m, m.resizeCmd()
-			case "?":
+			case key.Matches(msg, m.keys.Help):
 				m.help.ShowAll = !m.help.ShowAll
 				return m, nil
 			}
@@ -146,22 +159,15 @@ func (m Model) View() string {
 	}
 
 	if m.width > 0 && m.height > 0 && (m.width < MinWidth || m.height < MinHeight) {
-		warning := fmt.Sprintf("Warning: Terminal too small\nX: %d (Required: %d)\nY: %d (Required: %d)", m.width, MinWidth, m.height, MinHeight)
+		warning := fmt.Sprintf("Terminal too small\nW: %d (min %d)  H: %d (min %d)", m.width, MinWidth, m.height, MinHeight)
 		box := warningBoxStyle.Render(warning)
 
-		footer := renderFooter(defaultKeyBindings())
-		if provider, ok := m.pages[m.activePage].(ShortHelpProvider); ok {
-			per := RenderShortHelp(provider.ShortHelp())
-			if per != "" {
-				footer = lipgloss.JoinHorizontal(lipgloss.Bottom, per, footer)
-			}
-		}
+		footer := m.help.ShortHelpView(m.pageShortHelp())
 		footerHeight := lipgloss.Height(footer)
 		contentHeight := m.height - footerHeight
 		if contentHeight < 3 {
 			contentHeight = 3
 		}
-
 		placed := lipgloss.Place(m.width, contentHeight, lipgloss.Center, lipgloss.Center, box)
 		return placed + "\n" + footer
 	}
@@ -179,28 +185,21 @@ func (m Model) View() string {
 			rowLines[i] = line
 			continue
 		}
-		endChar := "┐"
 		fillWidth := innerWidth - lipgloss.Width(line) - 1
 		if fillWidth < 0 {
 			fillWidth = 0
 		}
-		rowLines[i] = line + borderFillStyle.Render(strings.Repeat("─", fillWidth)+endChar)
+		rowLines[i] = line + borderFillStyle.Render(strings.Repeat("─", fillWidth)+"┐")
 	}
 	row := strings.Join(rowLines, "\n")
 
-	// Footer: when the full help overlay is open, show a minimal "close" hint
-	// so the footer doesn't duplicate what is already visible in the content area.
+	// Footer: when help overlay is open show a minimal close hint only.
 	var footer string
 	if m.help.ShowAll {
 		closeKey := key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "close help"))
 		footer = m.help.ShortHelpView([]key.Binding{closeKey})
 	} else {
-		combined := []key.Binding{}
-		if provider, ok := m.pages[m.activePage].(ShortHelpProvider); ok {
-			combined = append(combined, provider.ShortHelp()...)
-		}
-		combined = append(combined, DefaultHelpBindings()...)
-		footer = m.help.ShortHelpView(combined)
+		footer = m.help.ShortHelpView(m.pageShortHelp())
 	}
 
 	contentWidth := innerWidth - windowStyle.GetHorizontalFrameSize()
@@ -222,8 +221,7 @@ func (m Model) View() string {
 		}
 	}
 
-	// Content: when help overlay is open render it here (single location);
-	// otherwise render the active page as normal.
+	// Content area: help overlay or active page.
 	var content string
 	if m.help.ShowAll {
 		groups := buildHelpGroups(m.pages)
@@ -265,8 +263,37 @@ func (m Model) View() string {
 	if m.zone != nil {
 		return m.zone.Scan(rendered)
 	}
-
 	return rendered
+}
+
+// pageShortHelp merges the active page's short bindings with global defaults.
+func (m Model) pageShortHelp() []key.Binding {
+	combined := []key.Binding{}
+	if provider, ok := m.pages[m.activePage].(ShortHelpProvider); ok {
+		combined = append(combined, provider.ShortHelp()...)
+	}
+	combined = append(combined, m.keys.ShortHelp()...)
+	return combined
+}
+
+// buildHelpGroups collects keybinding columns from every page that implements
+// FullHelp, followed by the global bindings as the final column.
+func buildHelpGroups(pages []Page) [][]key.Binding {
+	groups := [][]key.Binding{}
+	for _, p := range pages {
+		if hf, ok := p.(interface{ FullHelp() [][]key.Binding }); ok {
+			for _, col := range hf.FullHelp() {
+				if len(col) > 0 {
+					groups = append(groups, col)
+				}
+			}
+			continue
+		}
+		if sh, ok := p.(ShortHelpProvider); ok {
+			groups = append(groups, sh.ShortHelp())
+		}
+	}
+	return groups
 }
 
 // pageTitles returns the Title() string for every registered page.
@@ -276,25 +303,6 @@ func pageTitles(pages []Page) []string {
 		titles = append(titles, p.Title())
 	}
 	return titles
-}
-
-// buildHelpGroups collects keybinding columns from every page.
-// Pages that implement FullHelp() contribute their full columns; pages that
-// only implement ShortHelpProvider contribute a single column of short keys.
-func buildHelpGroups(pages []Page) [][]key.Binding {
-	groups := [][]key.Binding{}
-	for _, p := range pages {
-		if hf, ok := p.(interface{ FullHelp() [][]key.Binding }); ok {
-			for _, col := range hf.FullHelp() {
-				groups = append(groups, col)
-			}
-			continue
-		}
-		if sh, ok := p.(ShortHelpProvider); ok {
-			groups = append(groups, sh.ShortHelp())
-		}
-	}
-	return groups
 }
 
 // findPageIndexByTitle returns the index of the first page whose Title()
@@ -309,12 +317,8 @@ func findPageIndexByTitle(pages []Page, title string) int {
 }
 
 // computeContentSize calculates the exact inner dimensions available to a page
-// after all frame elements (tab bar, window border+padding, footer, bottom rule)
-// are subtracted. These are the dimensions pages should size their viewports to.
-//
-// Tab bar renders to exactly 3 lines (top border + content + bottom connection).
-// Footer is always 1 line of short-help in normal mode.
-// The bottom "└─┘" rule adds 1 more line outside the window frame.
+// after all frame elements are subtracted. Pages should size their viewports
+// to these dimensions via ContentSizeMsg rather than guessing at frame overhead.
 func (m Model) computeContentSize() (width, height int) {
 	if m.width == 0 || m.height == 0 {
 		return 0, 0
@@ -329,18 +333,17 @@ func (m Model) computeContentSize() (width, height int) {
 	if width < 0 {
 		width = 0
 	}
-
 	available := m.height - docStyle.GetVerticalFrameSize()
-	pageHeight := available - tabBarLines - footerLines - bottomRule - windowStyle.GetVerticalFrameSize()
-	if pageHeight < 1 {
-		pageHeight = 1
+	height = available - tabBarLines - footerLines - bottomRule - windowStyle.GetVerticalFrameSize()
+	if height < 1 {
+		height = 1
 	}
-	return width, pageHeight
+	return width, height
 }
 
-// resizeCmd emits both a raw WindowSizeMsg (for components like filepicker and
-// textinput that expect it) and a ContentSizeMsg with the exact inner dimensions
-// pages should use for viewport sizing.
+// resizeCmd emits both a raw WindowSizeMsg (for bubbles components that expect
+// it) and a ContentSizeMsg with the exact inner dimensions pages should use
+// for viewport sizing.
 func (m Model) resizeCmd() tea.Cmd {
 	if m.width == 0 || m.height == 0 {
 		return nil

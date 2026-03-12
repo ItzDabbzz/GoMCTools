@@ -7,8 +7,6 @@ import (
 )
 
 // Page is the interface that every top-level TUI page must satisfy.
-// It mirrors the tea.Model contract but returns a Page instead of tea.Model
-// so the root Model can store all pages in a single typed slice.
 type Page interface {
 	Title() string
 	Init() tea.Cmd
@@ -28,12 +26,21 @@ type KeyCapturer interface {
 	CaptureGlobalNav() bool
 }
 
-// ShortHelpProvider provides compact keybindings for the footer area.
-// Returning a slice of key.Binding allows each page to expose its relevant
-// short key hints that will be merged with global bindings in the footer.
+// ShortHelpProvider provides compact keybindings for the footer bar.
+// Pages implement this to contribute bindings merged with global defaults.
 type ShortHelpProvider interface {
 	ShortHelp() []key.Binding
 }
+
+// NavigateMsg can be emitted by a page to request the root model switch to a
+// specific tab index. Use this instead of hard-coding page switches inside
+// individual page Update methods.
+type NavigateMsg struct{ Page int }
+
+// ToggleHelpMsg can be emitted by a page that captures global nav (e.g. the
+// selector) to request the root model toggle the help overlay, since those
+// pages consume the ? key themselves before the root sees it.
+type ToggleHelpMsg struct{}
 
 // ContentSizeMsg is sent to pages alongside tea.WindowSizeMsg and carries the
 // actual inner dimensions of the content area they render into — after the
