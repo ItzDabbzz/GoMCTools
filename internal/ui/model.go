@@ -12,15 +12,17 @@ import (
 )
 
 type Model struct {
-	pages      []Page
-	activePage int
-	width      int
-	height     int
-	zone       *zone.Manager
-	zonePrefix string
-	state      *SharedState
-	pageZones  map[int]string
-	help       help.Model
+	pages         []Page
+	activePage    int
+	width         int
+	height        int
+	contentWidth  int // inner width available to pages (inside window frame)
+	contentHeight int // inner height available to pages (inside window frame)
+	zone          *zone.Manager
+	zonePrefix    string
+	state         *SharedState
+	pageZones     map[int]string
+	help          help.Model
 }
 
 const (
@@ -114,6 +116,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.Width = msg.Width
+		m.contentWidth, m.contentHeight = m.computeContentSize()
 	case PackLoadedMsg:
 		if m.state != nil {
 			if msg.Err != nil {
@@ -186,7 +190,6 @@ func (m Model) View() string {
 
 	// Footer: when the full help overlay is open, show a minimal "close" hint
 	// so the footer doesn't duplicate what is already visible in the content area.
-	m.help.Width = innerWidth
 	var footer string
 	if m.help.ShowAll {
 		closeKey := key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "close help"))
@@ -224,7 +227,6 @@ func (m Model) View() string {
 	var content string
 	if m.help.ShowAll {
 		groups := buildHelpGroups(m.pages)
-		m.help.Width = innerWidth
 		helpText := m.help.FullHelpView(groups)
 		content = windowStyle.
 			Width(contentWidth).
@@ -306,14 +308,49 @@ func findPageIndexByTitle(pages []Page, title string) int {
 	return -1
 }
 
-// resizeCmd emits a synthetic WindowSizeMsg so that the newly active page
-// receives correct dimensions immediately after a tab switch.
+// computeContentSize calculates the exact inner dimensions available to a page
+// after all frame elements (tab bar, window border+padding, footer, bottom rule)
+// are subtracted. These are the dimensions pages should size their viewports to.
+//
+// Tab bar renders to exactly 3 lines (top border + content + bottom connection).
+// Footer is always 1 line of short-help in normal mode.
+// The bottom "└─┘" rule adds 1 more line outside the window frame.
+func (m Model) computeContentSize() (width, height int) {
+	if m.width == 0 || m.height == 0 {
+		return 0, 0
+	}
+	const (
+		tabBarLines = 3 // top border + content row + bottom border/connector
+		footerLines = 1 // single line of short-help
+		bottomRule  = 1 // the "└───┘" row drawn below the window box
+	)
+	innerWidth := m.width - docStyle.GetHorizontalFrameSize()
+	width = innerWidth - windowStyle.GetHorizontalFrameSize()
+	if width < 0 {
+		width = 0
+	}
+
+	available := m.height - docStyle.GetVerticalFrameSize()
+	pageHeight := available - tabBarLines - footerLines - bottomRule - windowStyle.GetVerticalFrameSize()
+	if pageHeight < 1 {
+		pageHeight = 1
+	}
+	return width, pageHeight
+}
+
+// resizeCmd emits both a raw WindowSizeMsg (for components like filepicker and
+// textinput that expect it) and a ContentSizeMsg with the exact inner dimensions
+// pages should use for viewport sizing.
 func (m Model) resizeCmd() tea.Cmd {
 	if m.width == 0 || m.height == 0 {
 		return nil
 	}
 	w, h := m.width, m.height
-	return func() tea.Msg { return tea.WindowSizeMsg{Width: w, Height: h} }
+	cw, ch := m.contentWidth, m.contentHeight
+	return tea.Batch(
+		func() tea.Msg { return tea.WindowSizeMsg{Width: w, Height: h} },
+		func() tea.Msg { return ContentSizeMsg{Width: cw, Height: ch} },
+	)
 }
 
 // SetActivePage changes the active page to the given index, clamped to valid bounds.

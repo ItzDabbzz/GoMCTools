@@ -1,11 +1,11 @@
 package pages
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-
+	"github.com/charmbracelet/lipgloss"
 	"itzdabbzz.me/gomctools/internal/ui"
 )
 
@@ -25,13 +25,8 @@ func NewSettingsPage(state *ui.SharedState) ui.Page {
 	}
 }
 
-func (s *settingsPage) Title() string {
-	return "Settings"
-}
-
-func (s *settingsPage) Init() tea.Cmd {
-	return nil
-}
+func (s *settingsPage) Title() string { return "Settings" }
+func (s *settingsPage) Init() tea.Cmd { return nil }
 
 func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -39,16 +34,14 @@ func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		s.width = msg.Width
 		s.height = msg.Height
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "t":
+		switch {
+		case key.Matches(msg, settingsKeys.ToggleTelemetry):
 			s.telemetryEnabled = !s.telemetryEnabled
-		case "a":
+		case key.Matches(msg, settingsKeys.ToggleAutoLoad):
 			s.autoLoad = !s.autoLoad
-		case "r":
-			// Reset to defaults
+		case key.Matches(msg, settingsKeys.ResetDefaults):
 			s.telemetryEnabled = true
 			s.autoLoad = true
-			// Reset modlist settings in config
 			s.state.Config.Modlist.Mode = 0
 			s.state.Config.Modlist.AttachLinks = true
 			s.state.Config.Modlist.IncludeSide = true
@@ -56,7 +49,7 @@ func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			s.state.Config.Modlist.IncludeVersions = false
 			s.state.Config.Modlist.IncludeFilename = false
 		}
-		// Update config immediately
+		// Sync config after any key.
 		s.state.Config.TelemetryEnabled = s.telemetryEnabled
 		s.state.Config.AutoLoadPreviousState = s.autoLoad
 	}
@@ -64,32 +57,86 @@ func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 }
 
 func (s *settingsPage) View() string {
-	telemetry := "off"
-	if s.telemetryEnabled {
-		telemetry = "on"
+	title := sectionTitleStyle.Render("Settings")
+
+	toggle := func(on bool) string {
+		if on {
+			return settingsOnStyle.Render("on ")
+		}
+		return settingsOffStyle.Render("off")
 	}
-	autoLoadStr := "off"
-	if s.autoLoad {
-		autoLoadStr = "on"
+
+	row := func(b key.Binding, v string, desc string) string {
+		keyHint := settingsKeyStyle.Render(b.Help().Key)
+		status := toggle(v == "on")
+		return lipgloss.JoinHorizontal(lipgloss.Top,
+			keyHint, "  ", status, "  ", settingsDescStyle.Render(desc),
+		)
 	}
-	return fmt.Sprintf(
-		"Settings\n\n"+
-			"  [t] Telemetry: %s\n"+
-			"  [a] Auto-load previous state: %s\n"+
-			"  [r] Reset all settings to defaults\n\n"+
-			"Settings are saved automatically on exit.",
-		telemetry, autoLoadStr,
+
+	telemRow := row(settingsKeys.ToggleTelemetry, toggle(s.telemetryEnabled), "Telemetry")
+	autoRow := row(settingsKeys.ToggleAutoLoad, toggle(s.autoLoad), "Auto-load previous pack on startup")
+
+	resetHint := lipgloss.JoinHorizontal(lipgloss.Top,
+		settingsKeyStyle.Render(settingsKeys.ResetDefaults.Help().Key),
+		"  ",
+		settingsDescStyle.Render("Reset all settings to defaults"),
 	)
+
+	note := dimStyle.Render("Settings are saved automatically on exit.")
+
+	lines := []string{title, "", telemRow, autoRow, "", resetHint, "", note}
+	return strings.Join(lines, "\n")
 }
 
-func (s *settingsPage) ShortHelp() []key.Binding {
-	return []key.Binding{
-		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "toggle telemetry")),
-		key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "toggle auto-load")),
-		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reset defaults")),
-	}
+// settingsKeyMap holds all bindings for the Settings page.
+type settingsKeyMap struct {
+	ToggleTelemetry key.Binding
+	ToggleAutoLoad  key.Binding
+	ResetDefaults   key.Binding
 }
 
-func (s *settingsPage) FullHelp() [][]key.Binding {
-	return [][]key.Binding{s.ShortHelp()}
+func (k settingsKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.ToggleTelemetry, k.ToggleAutoLoad, k.ResetDefaults}
 }
+
+func (k settingsKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{k.ShortHelp()}
+}
+
+var settingsKeys = settingsKeyMap{
+	ToggleTelemetry: key.NewBinding(
+		key.WithKeys("t"),
+		key.WithHelp("t", "toggle telemetry"),
+	),
+	ToggleAutoLoad: key.NewBinding(
+		key.WithKeys("a"),
+		key.WithHelp("a", "toggle auto-load"),
+	),
+	ResetDefaults: key.NewBinding(
+		key.WithKeys("r"),
+		key.WithHelp("r", "reset defaults"),
+	),
+}
+
+func (s *settingsPage) ShortHelp() []key.Binding  { return settingsKeys.ShortHelp() }
+func (s *settingsPage) FullHelp() [][]key.Binding { return settingsKeys.FullHelp() }
+
+// --- styles ---
+
+var (
+	settingsKeyStyle = lipgloss.NewStyle().
+				Foreground(ui.HighlightColor).
+				Bold(true).
+				Width(3)
+
+	settingsDescStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#333333", Dark: "#cccccc"})
+
+	settingsOnStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#5af78e")).
+			Bold(true)
+
+	settingsOffStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"})
+)

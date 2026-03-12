@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -58,8 +59,9 @@ type cleanerPage struct {
 	workStart  time.Time
 	workErrors []string
 
-	pageWidth  int
-	pageHeight int
+	pageWidth    int
+	pageHeight   int
+	contentWidth int // set from ContentSizeMsg; exact inner width for layout
 
 	saving    bool
 	debugMode bool
@@ -186,44 +188,39 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 		c.saving = false
 	case tea.WindowSizeMsg:
+		// Store raw terminal size for availableContentWidth() width calculation.
 		c.pageWidth = m.Width
 		c.pageHeight = m.Height
-
-		contentWidth := c.availableContentWidth()
+	case ui.ContentSizeMsg:
+		// Use the exact content area dimensions the model has already computed
+		// rather than guessing at frame overhead ourselves.
+		c.contentWidth = m.Width
 		const minHorizontalWidth = 82
-		isHorizontal := contentWidth >= minHorizontalWidth
+		isHorizontal := m.Width >= minHorizontalWidth
 
-		reserved := 6
-		if m.Height > 30 {
-			reserved = 8
+		// Reserve one line for the status bar rendered below the columns.
+		listHeight := m.Height - 1
+		if listHeight < cleanerColHeight {
+			listHeight = cleanerColHeight
 		}
-		heightBudget := m.Height - reserved
 
 		if isHorizontal {
-			if heightBudget < cleanerColHeight {
-				heightBudget = cleanerColHeight
-			}
 			c.list.Width = cleanerListWidth()
-			c.list.Height = heightBudget
-			rightWidth := contentWidth - cleanerColWidth - cleanerGapWidth
+			c.list.Height = listHeight
+			rightWidth := m.Width - cleanerColWidth - cleanerGapWidth
 			if rightWidth < 32 {
 				rightWidth = 32
 			}
 			c.setHelpWidth(rightWidth)
 		} else {
-			reservedRight := 6
-			heightBudget -= reservedRight
-			if m.Height < 25 {
-				heightBudget = int(float64(heightBudget) * 0.75)
-			} else {
-				heightBudget = int(float64(heightBudget) * 0.70)
+			// Stacked: split height evenly between list and detail panel.
+			stackedHeight := listHeight / 2
+			if stackedHeight < 8 {
+				stackedHeight = 8
 			}
-			if heightBudget < 10 {
-				heightBudget = 10
-			}
-			c.list.Width = contentWidth
-			c.list.Height = heightBudget
-			c.setHelpWidth(contentWidth)
+			c.list.Width = m.Width
+			c.list.Height = stackedHeight
+			c.setHelpWidth(m.Width)
 		}
 		c.ensureSelectionVisible()
 	}
@@ -249,7 +246,10 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 }
 
 func (c *cleanerPage) View() string {
-	contentWidth := c.availableContentWidth()
+	contentWidth := c.contentWidth
+	if contentWidth == 0 {
+		contentWidth = c.availableContentWidth()
+	}
 	const minHorizontalWidth = 82
 	isHorizontal := contentWidth >= minHorizontalWidth
 
@@ -526,10 +526,6 @@ func (c *cleanerPage) saveToGlobalConfig() {
 func (c *cleanerPage) viewPresetList(totalWidth int) string {
 	if len(c.presets) == 0 {
 		c.list.SetContent("No presets")
-		c.list.Width = totalWidth
-		if c.list.Height == 0 {
-			c.list.Height = cleanerColHeight
-		}
 		return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
 	}
 
@@ -554,12 +550,7 @@ func (c *cleanerPage) viewPresetList(totalWidth int) string {
 		lines = append(lines, label)
 	}
 
-	content := strings.Join(lines, "\n")
-	c.list.SetContent(content)
-	if c.list.Height == 0 {
-		c.list.Height = cleanerColHeight
-	}
-	c.list.SetYOffset(c.list.YOffset + 10)
+	c.list.SetContent(strings.Join(lines, "\n"))
 	c.ensureSelectionVisible()
 	return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
 }
@@ -596,7 +587,9 @@ func (c *cleanerPage) viewDetail(width int) string {
 	} else {
 		detail = append(detail, sectionTitleStyle.Render("Actions"))
 		c.setHelpWidth(width)
-		detail = append(detail, ui.RenderShortHelp(c.keys.ShortHelp()))
+		h := help.New()
+		h.Width = c.helpWidth
+		detail = append(detail, h.ShortHelpView(c.keys.ShortHelp()))
 	}
 
 	detail = append(detail, "")

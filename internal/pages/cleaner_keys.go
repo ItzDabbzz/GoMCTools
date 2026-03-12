@@ -17,14 +17,14 @@ type cleanerKeyMap struct {
 
 // ShortHelp returns the most important bindings shown in the footer bar.
 func (k cleanerKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Toggle, k.Clean}
+	return []key.Binding{k.Toggle, k.Clean, k.New}
 }
 
 // FullHelp returns all bindings grouped into columns for the help overlay.
 func (k cleanerKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Toggle, k.Clean},
-		{k.New, k.Edit, k.Delete, k.Save, k.Debug},
+		{k.New, k.Edit, k.Delete, k.Save},
 	}
 }
 
@@ -33,11 +33,11 @@ func defaultCleanerKeyMap() cleanerKeyMap {
 	return cleanerKeyMap{
 		Up: key.NewBinding(
 			key.WithKeys("up", "k"),
-			key.WithHelp("up/k", "select previous"),
+			key.WithHelp("↑/k", "select previous"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("down", "j"),
-			key.WithHelp("down/j", "select next"),
+			key.WithHelp("↓/j", "select next"),
 		),
 		Toggle: key.NewBinding(
 			key.WithKeys(" "),
@@ -47,9 +47,10 @@ func defaultCleanerKeyMap() cleanerKeyMap {
 			key.WithKeys("c"),
 			key.WithHelp("c", "run cleaner"),
 		),
+		// "+" avoids conflicting with the global "n" next-tab binding.
 		New: key.NewBinding(
-			key.WithKeys("n"),
-			key.WithHelp("n", "new preset"),
+			key.WithKeys("+", "ctrl+n"),
+			key.WithHelp("+", "new preset"),
 		),
 		Edit: key.NewBinding(
 			key.WithKeys("e"),
@@ -64,8 +65,8 @@ func defaultCleanerKeyMap() cleanerKeyMap {
 			key.WithHelp("s", "save presets"),
 		),
 		Debug: key.NewBinding(
-			key.WithKeys("F12"),
-			key.WithHelp("F12", "debug mode"),
+			key.WithKeys("ctrl+d"),
+			key.WithHelp("ctrl+d", "debug"),
 		),
 	}
 }

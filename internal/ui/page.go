@@ -34,3 +34,13 @@ type KeyCapturer interface {
 type ShortHelpProvider interface {
 	ShortHelp() []key.Binding
 }
+
+// ContentSizeMsg is sent to pages alongside tea.WindowSizeMsg and carries the
+// actual inner dimensions of the content area they render into — after the
+// model has subtracted the tab bar, footer, window border, and padding.
+// Pages that contain viewports or need exact height budgets should listen for
+// this instead of trying to reverse-engineer frame overhead from raw terminal size.
+type ContentSizeMsg struct {
+	Width  int
+	Height int
+}

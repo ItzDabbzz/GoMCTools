@@ -34,11 +34,9 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	fp.AllowedTypes = []string{}
 	fp.ShowHidden = true
 
-	// Keep enter for selection, remove it from navigation so selecting a dir
-	// does not also descend into it.
-	defaultKeys := filepicker.DefaultKeyMap()
-	fp.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/right", "open"))
-	fp.KeyMap.Select = defaultKeys.Select
+	// Reserve enter for loading; use l/right to descend into directories.
+	fp.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/→", "open dir"))
+	fp.KeyMap.Select = filepicker.DefaultKeyMap().Select
 	if home, err := os.UserHomeDir(); err == nil {
 		fp.CurrentDirectory = home
 	}
@@ -55,7 +53,6 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(ui.HighlightColor)
 
-	// Load last path from config if auto-load is enabled
 	lastPath := "No directory selected"
 	if state.Config.AutoLoadPreviousState && state.Config.Selector.LastPath != "" {
 		lastPath = state.Config.Selector.LastPath
@@ -65,29 +62,29 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 
 	return &selectorPage{
 		selectedPath: lastPath,
-		status:       "Paste or type a path, press Enter to load (showing hidden)",
+		status:       "Paste or type a path then press Enter, or use the browser below",
 		state:        state,
 		fp:           fp,
 		input:        ti,
 		spin:         sp,
-		spinning:     false,
 	}
 }
 
-func (s *selectorPage) Title() string {
-	return "Selector"
-}
+func (s *selectorPage) Title() string { return "Selector" }
+
+// CaptureGlobalNav returns true so that arrow keys and l/h are passed to the
+// filepicker rather than being consumed by the root tab navigator.
+func (s *selectorPage) CaptureGlobalNav() bool { return true }
 
 func (s *selectorPage) Init() tea.Cmd {
 	cmds := []tea.Cmd{s.fp.Init(), textinput.Blink}
 
-	// Auto-load last pack if enabled and path exists
 	if s.state.Config.AutoLoadPreviousState && s.selectedPath != "No directory selected" {
 		abs, err := filepath.Abs(s.selectedPath)
 		if err == nil {
 			if info, err := os.Stat(abs); err == nil && info.IsDir() {
 				cmds = append(cmds, ui.LoadPackCmd(abs))
-				s.status = "Auto-loading last pack..."
+				s.status = "Auto-loading last pack…"
 				s.spinning = true
 			}
 		}
@@ -98,6 +95,7 @@ func (s *selectorPage) Init() tea.Cmd {
 
 func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	var cmds []tea.Cmd
+
 	var inputCmd tea.Cmd
 	s.input, inputCmd = s.input.Update(msg)
 	if inputCmd != nil {
@@ -120,55 +118,54 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			return s, tea.Batch(cmds...)
 		}
 		s.selectedPath = typed.Info.InstancePath
-		s.status = fmt.Sprintf("Loaded %d mods from %s", typed.Info.Counts.Total, filepath.Base(typed.Info.InstancePath))
-		// Persist the path so it can be auto-loaded on next launch.
+		s.status = fmt.Sprintf("✓  Loaded %d mods from %s",
+			typed.Info.Counts.Total, filepath.Base(typed.Info.InstancePath))
 		s.state.Config.Selector.LastPath = s.selectedPath
 		return s, tea.Batch(cmds...)
+
 	case tea.WindowSizeMsg:
 		s.pageWidth = typed.Width
 		s.pageHeight = typed.Height
 		s.updateLayout()
-	}
 
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		switch keyMsg.Type {
-		case tea.KeyEnter:
+	case tea.KeyMsg:
+		// Allow q/ctrl+c to quit even while selector captures global nav.
+		if key.Matches(typed, ui.DefaultKeys.Quit) {
+			return s, tea.Quit
+		}
+		// Allow ? to toggle the help overlay.
+		if key.Matches(typed, ui.DefaultKeys.Help) {
+			return s, func() tea.Msg { return ui.ToggleHelpMsg{} }
+		}
+		if typed.Type == tea.KeyEnter {
 			trimmed := strings.TrimSpace(s.input.Value())
 			if trimmed == "" {
 				s.status = "Path cannot be empty"
 				return s, tea.Batch(cmds...)
 			}
-
 			info, err := os.Stat(trimmed)
 			if err != nil {
 				s.status = "Path not found"
 				return s, tea.Batch(cmds...)
 			}
-
 			if !info.IsDir() {
 				s.status = "Path is not a directory"
 				return s, tea.Batch(cmds...)
 			}
-
 			abs, err := filepath.Abs(trimmed)
 			if err != nil {
 				s.status = "Could not resolve absolute path"
 				return s, tea.Batch(cmds...)
 			}
-
 			s.selectedPath = abs
-			s.status = "Loading pack..."
+			s.status = "Loading pack…"
 			s.fp.CurrentDirectory = abs
 			s.input.SetValue("")
 			s.spinning = true
-
-			// Save the path to config immediately (even if pack load fails)
 			s.state.Config.Selector.LastPath = abs
-
 			cmds = append(cmds, s.fp.Init(), spinner.Tick, ui.LoadPackCmd(abs))
+			return s, tea.Batch(cmds...)
 		}
-
-		return s, tea.Batch(cmds...)
 	}
 
 	var cmd tea.Cmd
@@ -194,34 +191,57 @@ func (s *selectorPage) updateLayout() {
 	if usableHeight < 8 {
 		usableHeight = 8
 	}
-
 	s.fp.Height = usableHeight
 }
 
 func (s *selectorPage) View() string {
-	builder := strings.Builder{}
-	builder.WriteString(fmt.Sprintf("Modpack directory: %s\n", s.selectedPath))
+	var b strings.Builder
+
+	b.WriteString(labelStyle.Render("Directory: "))
+	b.WriteString(valueStyle.Render(s.selectedPath))
+	b.WriteString("\n")
 
 	if s.spinning {
-		builder.WriteString(fmt.Sprintf("%s Loading pack...\n", s.spin.View()))
+		b.WriteString(s.spin.View())
+		b.WriteString(statusStyle.Render(" Loading pack…"))
 	} else if s.status != "" {
-		builder.WriteString(s.status)
-		builder.WriteString("\n")
+		b.WriteString(statusStyle.Render(s.status))
 	}
+	b.WriteString("\n\n")
 
-	builder.WriteString("Path:\n")
-	builder.WriteString(s.input.View())
-	builder.WriteString("\n\n")
+	b.WriteString(labelStyle.Render("Path:"))
+	b.WriteString("\n")
+	b.WriteString(s.input.View())
+	b.WriteString("\n\n")
 
-	builder.WriteString(s.fp.View())
-	return builder.String()
+	b.WriteString(s.fp.View())
+	return b.String()
 }
 
-func (s *selectorPage) ShortHelp() []key.Binding {
-	return []key.Binding{
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "load pack")),
-		key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/right", "open")),
-	}
+// selectorKeyMap holds the bindings relevant to the Selector page.
+type selectorKeyMap struct {
+	LoadPack key.Binding
+	OpenDir  key.Binding
 }
 
-func (s *selectorPage) FullHelp() [][]key.Binding { return [][]key.Binding{s.ShortHelp()} }
+func (k selectorKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.LoadPack, k.OpenDir}
+}
+
+func (k selectorKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{k.ShortHelp()}
+}
+
+var selectorKeys = selectorKeyMap{
+	LoadPack: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "load pack"),
+	),
+	OpenDir: key.NewBinding(
+		key.WithKeys("l", "right"),
+		key.WithHelp("l/→", "open dir"),
+	),
+}
+
+func (s *selectorPage) ShortHelp() []key.Binding  { return selectorKeys.ShortHelp() }
+func (s *selectorPage) FullHelp() [][]key.Binding { return selectorKeys.FullHelp() }
