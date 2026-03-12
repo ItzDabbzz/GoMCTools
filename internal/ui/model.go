@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -24,8 +26,8 @@ type Model struct {
 }
 
 const (
-	MinWidth  = 118
-	MinHeight = 26
+	MinWidth  = 60
+	MinHeight = 27
 )
 
 func NewModel(state *SharedState, pages []Page) Model {
@@ -43,6 +45,21 @@ func (m Model) Init() tea.Cmd {
 	if len(m.pages) == 0 {
 		return nil
 	}
+
+	// Check if auto-load is enabled and we're on the home page (index 0)
+	// If so, trigger auto-load by returning a command to load the pack
+	if m.activePage == 0 && m.state != nil && m.state.Config != nil {
+		if m.state.Config.AutoLoadPreviousState && m.state.Config.Selector.LastPath != "" {
+			abs, err := filepath.Abs(m.state.Config.Selector.LastPath)
+			if err == nil {
+				if info, err := os.Stat(abs); err == nil && info.IsDir() {
+					// Return a command to load the pack (this will trigger PackLoadedMsg)
+					return LoadPackCmd(abs)
+				}
+			}
+		}
+	}
+
 	return m.pages[m.activePage].Init()
 }
 
@@ -313,4 +330,12 @@ func (m Model) resizeCmd() tea.Cmd {
 	}
 	w, h := m.width, m.height
 	return func() tea.Msg { return tea.WindowSizeMsg{Width: w, Height: h} }
+}
+
+func (m *Model) SetActivePage(index int) {
+	m.activePage = clampInt(index, 0, len(m.pages)-1)
+}
+
+func (m Model) GetActivePage() int {
+	return m.activePage
 }

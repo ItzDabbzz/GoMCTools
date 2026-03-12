@@ -18,6 +18,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
+	"itzdabbzz.me/gomctools/internal/config"
 	"itzdabbzz.me/gomctools/internal/ui"
 )
 
@@ -46,6 +47,7 @@ type cleanerKeyMap struct {
 	Delete key.Binding
 	Save   key.Binding
 	Help   key.Binding
+	Debug  key.Binding
 }
 
 func (k cleanerKeyMap) ShortHelp() []key.Binding {
@@ -55,7 +57,7 @@ func (k cleanerKeyMap) ShortHelp() []key.Binding {
 func (k cleanerKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Toggle, k.Clean},
-		{k.New, k.Edit, k.Delete, k.Save, k.Help},
+		{k.New, k.Edit, k.Delete, k.Save, k.Help, k.Debug},
 	}
 }
 
@@ -97,6 +99,10 @@ func defaultCleanerKeyMap() cleanerKeyMap {
 			key.WithKeys("?"),
 			key.WithHelp("?", "toggle help"),
 		),
+		Debug: key.NewBinding(
+			key.WithKeys("F12"),
+			key.WithHelp("F12", "debug mode"),
+		),
 	}
 }
 
@@ -136,7 +142,8 @@ type cleanerPage struct {
 	pageWidth  int
 	pageHeight int
 
-	saving bool
+	saving    bool
+	debugMode bool
 }
 
 func NewCleanerPage(state *ui.SharedState) ui.Page {
@@ -157,10 +164,25 @@ func NewCleanerPage(state *ui.SharedState) ui.Page {
 	list.MouseWheelEnabled = true
 	list.MouseWheelDelta = 2
 
+	// Load presets from global config
+	presets := defaultCleanerPresets()
+	if len(state.Config.Cleaner.CustomPresets) > 0 {
+		customPresets := make([]cleanerPreset, 0, len(state.Config.Cleaner.CustomPresets))
+		for _, cp := range state.Config.Cleaner.CustomPresets {
+			customPresets = append(customPresets, cleanerPreset{
+				Name:    cp.Name,
+				Pattern: cp.Pattern,
+				Enabled: cp.Enabled,
+				BuiltIn: false,
+			})
+		}
+		presets = append(presets, normalizeCustom(customPresets)...)
+	}
+
 	return &cleanerPage{
 		state:      state,
 		keys:       defaultCleanerKeyMap(),
-		presets:    defaultCleanerPresets(),
+		presets:    presets,
 		inputName:  nameInput,
 		inputPath:  pathInput,
 		progress:   pr,
@@ -244,22 +266,58 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		c.pageWidth = m.Width
 		c.pageHeight = m.Height
 
-		// Reserve headroom for tabs, footer, the status line, and a spacer so the list never overflows the window.
-		reserved := ui.DocStyle.GetVerticalFrameSize() + ui.WindowStyle.GetVerticalFrameSize() + 8
-		heightBudget := m.Height - reserved
-		if heightBudget < cleanerColHeight {
-			heightBudget = cleanerColHeight
-		}
-		c.list.Width = cleanerListWidth()
-		c.list.Height = heightBudget
-		c.ensureSelectionVisible()
-
 		contentWidth := c.availableContentWidth()
-		rightWidth := contentWidth - cleanerColWidth - cleanerGapWidth
-		if rightWidth < 32 {
-			rightWidth = 32
+		const minHorizontalWidth = 82
+		isHorizontal := contentWidth >= minHorizontalWidth
+
+		// Reserve minimal headroom for tabs, footer, and status line
+		// For small screens, be more conservative with reserved space
+		reserved := 6 // tabs + footer + minimal padding
+		if m.Height > 30 {
+			reserved = 8 // More space on larger screens
 		}
-		c.setHelpWidth(rightWidth)
+		heightBudget := m.Height - reserved
+
+		if isHorizontal {
+			// Side-by-side: allocate height for left column only (right column auto-sizes)
+			if heightBudget < cleanerColHeight {
+				heightBudget = cleanerColHeight
+			}
+			c.list.Width = cleanerListWidth()
+			c.list.Height = heightBudget
+
+			rightWidth := contentWidth - cleanerColWidth - cleanerGapWidth
+			if rightWidth < 32 {
+				rightWidth = 32
+			}
+			c.setHelpWidth(rightWidth)
+		} else {
+			// Vertical layout: preset list above, details below
+			// In vertical mode, give most space to the preset list
+			// Reserve just enough for the details section (about 5-6 lines)
+			reservedRight := 6 // Details: title, type, elapsed, progress bar, progress text
+			heightBudget -= reservedRight
+
+			// Give preset list a generous portion of remaining space
+			// Use floating point to avoid truncation issues
+			if m.Height < 25 {
+				// On very small screens, preset list gets 75% of available space
+				heightBudget = int(float64(heightBudget) * 0.75)
+			} else {
+				// On larger screens, preset list gets 70% of available space
+				heightBudget = int(float64(heightBudget) * 0.70)
+			}
+
+			// Ensure minimum height for usability - at least 10 lines
+			if heightBudget < 10 {
+				heightBudget = 10
+			}
+
+			c.list.Width = contentWidth
+			c.list.Height = heightBudget
+			c.setHelpWidth(contentWidth)
+		}
+		c.ensureSelectionVisible()
 	}
 
 	var cmds []tea.Cmd
@@ -284,20 +342,50 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 func (c *cleanerPage) View() string {
 	contentWidth := c.availableContentWidth()
-	leftTotal := cleanerColWidth
-	rightTotal := contentWidth - leftTotal - cleanerGapWidth
-	if rightTotal < 32 {
-		rightTotal = 32
-	}
-	left := c.viewPresetList(leftTotal)
-	right := c.viewDetail(rightTotal)
-	spacer := strings.Repeat(" ", cleanerGapWidth)
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, left, spacer, right)
-	body := lipgloss.NewStyle().Width(contentWidth).Render(row)
+	// Minimum width needed for side-by-side layout:
+	// 48 (left) + 2 (gap) + 32 (right min) = 82 chars
+	const minHorizontalWidth = 82
+
+	isHorizontal := contentWidth >= minHorizontalWidth
+
+	var body string
+	if isHorizontal {
+		// Side-by-side layout
+		leftTotal := cleanerColWidth
+		rightTotal := contentWidth - leftTotal - cleanerGapWidth
+		if rightTotal < 32 {
+			rightTotal = 32
+		}
+		left := c.viewPresetList(leftTotal)
+		right := c.viewDetail(rightTotal)
+		spacer := strings.Repeat(" ", cleanerGapWidth)
+
+		row := lipgloss.JoinHorizontal(lipgloss.Top, left, spacer, right)
+		body = lipgloss.NewStyle().Width(contentWidth).Render(row)
+	} else {
+		// Vertical layout for narrow screens
+		left := c.viewPresetList(contentWidth)
+		right := c.viewDetail(contentWidth)
+
+		vertical := lipgloss.JoinVertical(lipgloss.Left, left, right)
+		body = lipgloss.NewStyle().Width(contentWidth).Render(vertical)
+	}
+
 	if c.status != "" {
 		body += "\n" + statusStyle.Render(c.status)
 	}
+
+	// Debug mode: show screen size at top right
+	if c.debugMode {
+		debugInfo := fmt.Sprintf("DEBUG: %dx%d | W:%d H:%d", c.pageWidth, c.pageHeight, contentWidth, c.list.Height)
+		debugLine := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("11")).
+			Render(debugInfo)
+		// Prepend debug info on a new line
+		body = debugLine + "\n" + body
+	}
+
 	return body
 }
 
@@ -350,6 +438,9 @@ func (c *cleanerPage) handleKey(msg tea.KeyMsg) (ui.Page, tea.Cmd) {
 		}
 	case key.Matches(msg, c.keys.Save):
 		return c, c.saveCustomPresetsCmd()
+	case key.Matches(msg, c.keys.Debug):
+		c.debugMode = !c.debugMode
+		return c, nil
 
 	}
 
@@ -537,16 +628,43 @@ func (c *cleanerPage) loadCustomPresetsCmd(root string) tea.Cmd {
 }
 
 func (c *cleanerPage) saveCustomPresetsCmd() tea.Cmd {
-	if c.state == nil || c.state.Pack.MinecraftDir == "" {
-		c.status = "Load a pack before saving presets."
+	if c.state == nil {
+		c.status = "State not initialized."
 		return nil
 	}
 	c.saving = true
-	root := c.state.Pack.MinecraftDir
 	presets := filterCustom(c.presets)
+
+	// Save to global config
+	c.saveToGlobalConfig()
+
+	// Also save to pack-specific config if pack is loaded
+	if c.state.Pack.MinecraftDir != "" {
+		root := c.state.Pack.MinecraftDir
+		return func() tea.Msg {
+			err := writeCleanerConfig(root, presets)
+			return cleanerSavedMsg{Err: err}
+		}
+	}
+
+	// No pack loaded, just return success
 	return func() tea.Msg {
-		err := writeCleanerConfig(root, presets)
-		return cleanerSavedMsg{Err: err}
+		return cleanerSavedMsg{Err: nil}
+	}
+}
+
+func (c *cleanerPage) saveToGlobalConfig() {
+	if c.state == nil || c.state.Config == nil {
+		return
+	}
+	presets := filterCustom(c.presets)
+	c.state.Config.Cleaner.CustomPresets = make([]config.CleanerPreset, 0, len(presets))
+	for _, p := range presets {
+		c.state.Config.Cleaner.CustomPresets = append(c.state.Config.Cleaner.CustomPresets, config.CleanerPreset{
+			Name:    p.Name,
+			Pattern: p.Pattern,
+			Enabled: p.Enabled,
+		})
 	}
 }
 
@@ -655,6 +773,7 @@ func filterCustom(list []cleanerPreset) []cleanerPreset {
 func defaultCleanerPresets() []cleanerPreset {
 	names := []string{
 		".cache/",
+		".curseclient/",
 		".mixin.out/",
 		".probe/",
 		".vscode/",
@@ -683,6 +802,8 @@ func defaultCleanerPresets() []cleanerPreset {
 		"servers.dat_old",
 		"usercache.json",
 		"usernamecache.json",
+		"modlist.html",
+		"kubejs/",
 	}
 
 	presets := make([]cleanerPreset, 0, len(names))
@@ -704,8 +825,10 @@ func displayName(path string) string {
 func (c *cleanerPage) viewPresetList(totalWidth int) string {
 	if len(c.presets) == 0 {
 		c.list.SetContent("No presets")
-		c.list.Width = cleanerListWidth()
-		c.list.Height = cleanerColHeight
+		c.list.Width = totalWidth
+		if c.list.Height == 0 {
+			c.list.Height = cleanerColHeight
+		}
 		return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
 	}
 
@@ -731,18 +854,19 @@ func (c *cleanerPage) viewPresetList(totalWidth int) string {
 	}
 
 	content := strings.Join(lines, "\n")
-	c.list.Width = cleanerListWidth()
+	c.list.SetContent(content)
+	// Ensure viewport height is set (it should be set by WindowSizeMsg)
 	if c.list.Height == 0 {
 		c.list.Height = cleanerColHeight
 	}
-	c.list.SetContent(content)
+	c.list.SetYOffset(c.list.YOffset) // Refresh viewport
 	c.ensureSelectionVisible()
 	return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
 }
 
 func (c *cleanerPage) viewDetail(width int) string {
-	if width < cleanerColWidth {
-		width = cleanerColWidth
+	if width < 24 {
+		width = 24
 	}
 	var detail []string
 	detail = append(detail, sectionTitleStyle.Render("Details"))
@@ -841,15 +965,17 @@ func (c *cleanerPage) setHelpWidth(total int) {
 func (c *cleanerPage) availableContentWidth() int {
 	width := c.pageWidth
 	if width == 0 {
+		// Default width when not yet initialized
 		return cleanerColWidth*2 + cleanerColStyle.GetHorizontalFrameSize() + 4
 	}
 	inner := width - ui.DocStyle.GetHorizontalFrameSize()
-	if inner < ui.MinWidth {
-		inner = ui.MinWidth
-	}
+	// Don't enforce ui.MinWidth here - it breaks responsive layout on narrow screens
+	// Let the layout system handle small screens gracefully
 	content := inner - ui.WindowStyle.GetHorizontalFrameSize()
-	if content < cleanerColWidth*2 {
-		content = cleanerColWidth*2 + cleanerColStyle.GetHorizontalFrameSize()
+	// Minimum width for a usable single-column interface
+	minWidth := 40
+	if content < minWidth {
+		content = minWidth
 	}
 	return content
 }

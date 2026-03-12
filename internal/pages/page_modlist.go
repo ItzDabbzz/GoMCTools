@@ -94,6 +94,10 @@ type modlistPage struct {
 	renderer   *glamour.TermRenderer
 	rendererW  int
 	dirty      bool
+
+	// Cache for rendered markdown to avoid re-rendering
+	cachedMarkdown     string
+	cachedSettingsHash uint64
 }
 
 // SetZone wires the page to the root bubblezone manager so click detection
@@ -108,14 +112,20 @@ func NewModlistPage(state *ui.SharedState) ui.Page {
 	vp.MouseWheelDelta = 2
 	vp.MouseWheelEnabled = true
 
+	// Load settings from config
+	mode := modlistMerged
+	if state.Config.Modlist.Mode == 1 {
+		mode = modlistSeparated
+	}
+
 	return &modlistPage{
 		state:           state,
-		mode:            modlistMerged,
-		attachLinks:     true,
-		includeSide:     true,
-		includeSource:   true,
-		includeVersions: false,
-		includeFilename: false,
+		mode:            mode,
+		attachLinks:     state.Config.Modlist.AttachLinks,
+		includeSide:     state.Config.Modlist.IncludeSide,
+		includeSource:   state.Config.Modlist.IncludeSource,
+		includeVersions: state.Config.Modlist.IncludeVersions,
+		includeFilename: state.Config.Modlist.IncludeFilename,
 		viewport:        vp,
 		status:          "Load a pack in Selector to generate a mod list.",
 		dirty:           true,
@@ -150,12 +160,10 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			}
 		}
 	case tea.WindowSizeMsg:
-		if typed.Width != m.pageWidth || typed.Height != m.pageHeight {
-			m.pageWidth = typed.Width
-			m.pageHeight = typed.Height
-			m.updateViewportSize()
-			m.dirty = true
-		}
+		// CRITICAL: Compute layout when we get window dimensions, NOT in View()
+		m.pageWidth = typed.Width
+		m.pageHeight = typed.Height
+		m.updateLayout()
 	case tea.MouseMsg:
 		if m.zone != nil && typed.Type == tea.MouseLeft {
 			if id := m.resolveMouseZone(typed); id != "" {
@@ -165,23 +173,30 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	case tea.KeyMsg:
 		if key.Matches(typed, m.keys.LayoutMerged) {
 			m = m.setLayout(modlistMerged)
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.LayoutSplit) {
 			m = m.setLayout(modlistSeparated)
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.ToggleLinks) {
 			m.attachLinks = !m.attachLinks
 			m.dirty = true
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.ToggleSide) {
 			m.includeSide = !m.includeSide
 			m.dirty = true
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.ToggleSource) {
 			m.includeSource = !m.includeSource
 			m.dirty = true
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.ToggleVersions) {
 			m.includeVersions = !m.includeVersions
 			m.dirty = true
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.ToggleFilename) {
 			m.includeFilename = !m.includeFilename
 			m.dirty = true
+			m.saveToConfig()
 		} else if key.Matches(typed, m.keys.Copy) {
 			m.status = m.copyMarkdown()
 		} else if key.Matches(typed, m.keys.Export) {
@@ -202,18 +217,135 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// updateLayout computes all layout dimensions when window size is known
+func (m *modlistPage) updateLayout() {
+	const gap = 2
+
+	// Compute content width based on available space
+	contentW := m.pageWidth - ui.DocStyle.GetHorizontalFrameSize() - ui.WindowStyle.GetHorizontalFrameSize()
+	if contentW < 64 {
+		contentW = 64
+	}
+	m.contentW = contentW
+
+	// Compute settings and preview widths
+	settings := m.estimatedSettingsWidth(contentW)
+	if settings < 44 {
+		settings = 44
+	}
+	maxSettings := contentW - gap - 32
+	if settings > maxSettings {
+		settings = maxSettings
+	}
+	preview := contentW - gap - settings
+	if preview < 32 {
+		preview = 32
+		settings = contentW - gap - preview
+	}
+
+	m.settingsW = settings
+	m.previewW = preview
+
+	// Update viewport size
+	if m.previewW > 0 {
+		m.viewport.Width = m.previewW
+	}
+	frame := ui.WindowStyle.GetVerticalFrameSize()
+	avail := m.pageHeight - ui.DocStyle.GetVerticalFrameSize() - frame - 4 // tabs/footer breathing room
+	if avail < 8 {
+		avail = 8
+	}
+	m.viewport.Height = avail
+
+	// Check if wrapping changed
+	wrap := preview - 2
+	if wrap < 16 {
+		wrap = 16
+	}
+	if wrap != m.lastWrap {
+		m.lastWrap = wrap
+		m.dirty = true
+	}
+}
+
 func (m *modlistPage) rebuild() {
-	m.markdown = m.generateMarkdown()
-	wrapped := m.renderMarkdown(m.markdown)
-	m.viewport.SetContent(wrapped)
+	// Calculate a hash of current settings to check if we need to regenerate
+	settingsHash := m.calculateSettingsHash()
+
+	// Track if we're generating new content (vs using cached)
+	isNewContent := m.dirty || settingsHash != m.cachedSettingsHash || m.cachedMarkdown == ""
+
+	// Only regenerate markdown if settings have changed or content is dirty
+	if isNewContent {
+		m.markdown = m.generateMarkdown()
+		m.cachedSettingsHash = settingsHash
+		m.cachedMarkdown = m.markdown
+	} else {
+		// Use cached markdown
+		m.markdown = m.cachedMarkdown
+	}
+
+	// Skip expensive markdown rendering when no pack is loaded
+	if m.state == nil || m.state.Pack.InstancePath == "" {
+		// Just use the plain markdown without glamour rendering
+		m.viewport.SetContent(m.markdown)
+	} else {
+		wrapped := m.renderMarkdown(m.markdown)
+		m.viewport.SetContent(wrapped)
+	}
+
+	// Always start at the top for simplicity
+	m.viewport.SetYOffset(0)
+
 	m.dirty = false
 }
 
+func (m *modlistPage) calculateSettingsHash() uint64 {
+	// Simple hash combining all settings that affect markdown output
+	var hash uint64 = 14695981039346656037 // FNV offset basis
+	hash = hash*1099511628211 ^ uint64(m.mode)
+	hash = hash*1099511628211 ^ boolToUint64(m.attachLinks)
+	hash = hash*1099511628211 ^ boolToUint64(m.includeSide)
+	hash = hash*1099511628211 ^ boolToUint64(m.includeSource)
+	hash = hash*1099511628211 ^ boolToUint64(m.includeVersions)
+	hash = hash*1099511628211 ^ boolToUint64(m.includeFilename)
+	// Also include pack path to detect when a different pack is loaded
+	if m.state != nil && m.state.Pack.InstancePath != "" {
+		for _, b := range []byte(m.state.Pack.InstancePath) {
+			hash = hash*1099511628211 ^ uint64(b)
+		}
+	}
+	return hash
+}
+
+func boolToUint64(b bool) uint64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// View now only renders using pre-computed layout values
 func (m *modlistPage) View() string {
-	m.ensureLayout()
+	// If we don't have window dimensions yet, show a simple message
+	if m.pageWidth == 0 || m.pageHeight == 0 {
+		return "Modlist Generator - initializing..."
+	}
 
 	settings := lipgloss.NewStyle().Width(m.settingsW).Render(m.renderSettings())
-	preview := lipgloss.NewStyle().Width(m.previewW).Render(m.viewport.View())
+
+	// Skip viewport rendering when no pack is loaded - just show status
+	var preview string
+	if m.state != nil && m.state.Pack.InstancePath != "" {
+		preview = lipgloss.NewStyle().Width(m.previewW).Render(m.viewport.View())
+	} else {
+		// Show a simple placeholder when no pack is loaded
+		preview = lipgloss.NewStyle().
+			Width(m.previewW).
+			Height(m.viewport.Height).
+			Render(statusStyle.Render("Load a pack from the Selector tab to generate a mod list."))
+	}
+
 	gap := strings.Repeat(" ", 2)
 
 	layout := lipgloss.JoinHorizontal(lipgloss.Top, settings, gap, preview)
@@ -226,14 +358,7 @@ func (m *modlistPage) View() string {
 	return layout
 }
 
-func (m *modlistPage) updateViewportSize() {
-	m.recomputeWidths()
-	m.applyViewportSizes()
-}
-
 func (m *modlistPage) renderSettings() string {
-	m.ensureLayout()
-
 	left := []string{
 		sectionTitleStyle.Render("Layout"),
 		m.markOption("layout-merged", fmt.Sprintf("%s Merged (1)", checkbox(m.mode == modlistMerged))),
@@ -261,65 +386,6 @@ func (m *modlistPage) renderSettings() string {
 	rightCol := settingsStyle.Width(colW + 4).Render(strings.Join(right, "\n"))
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
-}
-
-func (m *modlistPage) ensureLayout() {
-	if m.contentW == 0 {
-		m.recomputeWidths()
-	}
-	if m.settingsW == 0 || m.previewW == 0 {
-		m.recomputeWidths()
-	}
-	if m.viewport.Width == 0 && m.previewW > 0 {
-		m.viewport.Width = m.previewW
-	}
-}
-
-func (m *modlistPage) recomputeWidths() {
-	const gap = 2
-	contentW := m.pageWidth - ui.DocStyle.GetHorizontalFrameSize() - ui.WindowStyle.GetHorizontalFrameSize()
-	if contentW < 64 {
-		contentW = 64
-	}
-	m.contentW = contentW
-
-	settings := m.estimatedSettingsWidth(contentW)
-	if settings < 44 {
-		settings = 44
-	}
-	maxSettings := contentW - gap - 32
-	if settings > maxSettings {
-		settings = maxSettings
-	}
-	preview := contentW - gap - settings
-	if preview < 32 {
-		preview = 32
-		settings = contentW - gap - preview
-	}
-
-	m.settingsW = settings
-	m.previewW = preview
-
-	wrap := preview - 2
-	if wrap < 16 {
-		wrap = 16
-	}
-	if wrap != m.lastWrap {
-		m.lastWrap = wrap
-		m.dirty = true
-	}
-}
-
-func (m *modlistPage) applyViewportSizes() {
-	if m.previewW > 0 {
-		m.viewport.Width = m.previewW
-	}
-	frame := ui.WindowStyle.GetVerticalFrameSize()
-	avail := m.pageHeight - ui.DocStyle.GetVerticalFrameSize() - frame - 4 // tabs/footer breathing room
-	if avail < 8 {
-		avail = 8
-	}
-	m.viewport.Height = avail
 }
 
 func (m *modlistPage) markOption(id, content string) string {
@@ -563,7 +629,17 @@ func (m *modlistPage) renderMarkdown(md string) string {
 		wrap = 80
 	}
 
+	// Only recreate renderer if wrap width actually changed
 	if m.renderer == nil || m.rendererW != wrap {
+		// Cache the previous markdown to avoid re-rendering unchanged content
+		if m.rendererW == wrap && m.renderer != nil && md == m.markdown {
+			// Content and wrap unchanged, renderer is still valid
+			out, err := m.renderer.Render(md)
+			if err == nil {
+				return out
+			}
+		}
+
 		options := []glamour.TermRendererOption{
 			utils.GlamourStyle(styles.AutoStyle, false),
 			glamour.WithWordWrap(wrap),
@@ -615,23 +691,30 @@ func (m *modlistPage) handleClick(id string) *modlistPage {
 	switch strings.TrimPrefix(id, m.prefix) {
 	case "layout-merged":
 		m = m.setLayout(modlistMerged)
+		m.saveToConfig()
 	case "layout-split":
 		m = m.setLayout(modlistSeparated)
+		m.saveToConfig()
 	case "meta-links":
 		m.attachLinks = !m.attachLinks
 		m.dirty = true
+		m.saveToConfig()
 	case "meta-side":
 		m.includeSide = !m.includeSide
 		m.dirty = true
+		m.saveToConfig()
 	case "meta-source":
 		m.includeSource = !m.includeSource
 		m.dirty = true
+		m.saveToConfig()
 	case "meta-version":
 		m.includeVersions = !m.includeVersions
 		m.dirty = true
+		m.saveToConfig()
 	case "meta-filename":
 		m.includeFilename = !m.includeFilename
 		m.dirty = true
+		m.saveToConfig()
 	case "action-copy":
 		m.status = m.copyMarkdown()
 	case "action-export":
@@ -646,6 +729,23 @@ func (m *modlistPage) setLayout(mode modlistMode) *modlistPage {
 		m.dirty = true
 	}
 	return m
+}
+
+func (m *modlistPage) saveToConfig() {
+	if m.state == nil || m.state.Config == nil {
+		return
+	}
+	// Convert mode to int for config
+	modeInt := 0
+	if m.mode == modlistSeparated {
+		modeInt = 1
+	}
+	m.state.Config.Modlist.Mode = modeInt
+	m.state.Config.Modlist.AttachLinks = m.attachLinks
+	m.state.Config.Modlist.IncludeSide = m.includeSide
+	m.state.Config.Modlist.IncludeSource = m.includeSource
+	m.state.Config.Modlist.IncludeVersions = m.includeVersions
+	m.state.Config.Modlist.IncludeFilename = m.includeFilename
 }
 
 func (m *modlistPage) detectPackChange() {

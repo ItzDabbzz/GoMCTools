@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"itzdabbzz.me/gomctools/internal/ui"
 )
 
 type dashboardPage struct {
-	state *ui.SharedState
+	state  *ui.SharedState
+	width  int
+	height int
 }
 
 func NewDashboardPage(state *ui.SharedState) ui.Page {
@@ -25,6 +28,11 @@ func (d dashboardPage) Init() tea.Cmd {
 }
 
 func (d dashboardPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		d.width = msg.Width
+		d.height = msg.Height
+	}
 	return d, nil
 }
 
@@ -58,4 +66,12 @@ func (d dashboardPage) View() string {
 
 	return builder.String()
 
+}
+
+func (d dashboardPage) ShortHelp() []key.Binding {
+	return []key.Binding{}
+}
+
+func (d dashboardPage) FullHelp() [][]key.Binding {
+	return [][]key.Binding{}
 }

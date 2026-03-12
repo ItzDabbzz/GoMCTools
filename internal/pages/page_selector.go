@@ -55,8 +55,16 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(ui.HighlightColor)
 
-	return selectorPage{
-		selectedPath: "No directory selected",
+	// Load last path from config if auto-load is enabled
+	lastPath := "No directory selected"
+	if state.Config.AutoLoadPreviousState && state.Config.Selector.LastPath != "" {
+		lastPath = state.Config.Selector.LastPath
+		ti.SetValue(lastPath)
+		fp.CurrentDirectory = lastPath
+	}
+
+	return &selectorPage{
+		selectedPath: lastPath,
 		status:       "Paste or type a path, press Enter to load (showing hidden)",
 		state:        state,
 		fp:           fp,
@@ -66,15 +74,29 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	}
 }
 
-func (s selectorPage) Title() string {
+func (s *selectorPage) Title() string {
 	return "Selector"
 }
 
-func (s selectorPage) Init() tea.Cmd {
-	return tea.Batch(s.fp.Init(), textinput.Blink)
+func (s *selectorPage) Init() tea.Cmd {
+	cmds := []tea.Cmd{s.fp.Init(), textinput.Blink}
+
+	// Auto-load last pack if enabled and path exists
+	if s.state.Config.AutoLoadPreviousState && s.selectedPath != "No directory selected" {
+		abs, err := filepath.Abs(s.selectedPath)
+		if err == nil {
+			if info, err := os.Stat(abs); err == nil && info.IsDir() {
+				cmds = append(cmds, ui.LoadPackCmd(abs))
+				s.status = "Auto-loading last pack..."
+				s.spinning = true
+			}
+		}
+	}
+
+	return tea.Batch(cmds...)
 }
 
-func (s selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
+func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	var cmds []tea.Cmd
 	var inputCmd tea.Cmd
 	s.input, inputCmd = s.input.Update(msg)
@@ -99,6 +121,9 @@ func (s selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 		s.selectedPath = typed.Info.InstancePath
 		s.status = fmt.Sprintf("Loaded %d mods from %s", typed.Info.Counts.Total, filepath.Base(typed.Info.InstancePath))
+		// Save the path to config
+		s.state.Config.Selector.LastPath = s.selectedPath
+		s.state.Config.LastPackPath = s.selectedPath
 		return s, tea.Batch(cmds...)
 	case tea.WindowSizeMsg:
 		s.pageWidth = typed.Width
@@ -137,6 +162,11 @@ func (s selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			s.fp.CurrentDirectory = abs
 			s.input.SetValue("")
 			s.spinning = true
+
+			// Save the path to config immediately (even if pack load fails)
+			s.state.Config.Selector.LastPath = abs
+			s.state.Config.LastPackPath = abs
+
 			cmds = append(cmds, s.fp.Init(), spinner.Tick, ui.LoadPackCmd(abs))
 		}
 
@@ -170,7 +200,7 @@ func (s *selectorPage) updateLayout() {
 	s.fp.Height = usableHeight
 }
 
-func (s selectorPage) View() string {
+func (s *selectorPage) View() string {
 	builder := strings.Builder{}
 	builder.WriteString(fmt.Sprintf("Modpack directory: %s\n", s.selectedPath))
 
@@ -189,11 +219,11 @@ func (s selectorPage) View() string {
 	return builder.String()
 }
 
-func (s selectorPage) ShortHelp() []key.Binding {
+func (s *selectorPage) ShortHelp() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "load pack")),
 		key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/right", "open")),
 	}
 }
 
-func (s selectorPage) FullHelp() [][]key.Binding { return [][]key.Binding{s.ShortHelp()} }
+func (s *selectorPage) FullHelp() [][]key.Binding { return [][]key.Binding{s.ShortHelp()} }

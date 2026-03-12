@@ -12,16 +12,22 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/pelletier/go-toml/v2"
+
+	"itzdabbzz.me/gomctools/internal/config"
 )
 
 // SharedState keeps data that multiple pages need, such as the currently loaded pack.
 type SharedState struct {
+	Config        *config.Config
 	Pack          PackInfo
 	LastLoadError string
 }
 
 func NewSharedState() *SharedState {
-	return &SharedState{}
+	cfg := config.DefaultConfig()
+	return &SharedState{
+		Config: &cfg,
+	}
 }
 
 // PackInfo represents the Prism instance that was loaded from disk.
