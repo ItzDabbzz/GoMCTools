@@ -14,8 +14,6 @@ import (
 type Config struct {
 	// AutoLoadPreviousState reopens the last loaded pack on startup when true.
 	AutoLoadPreviousState bool `toml:"auto_load_previous_state"`
-	// TelemetryEnabled controls whether anonymous usage data is reported.
-	TelemetryEnabled bool `toml:"telemetry_enabled"`
 
 	// Selector holds settings for the pack-selection page.
 	Selector struct {
@@ -50,7 +48,6 @@ type CleanerPreset struct {
 func DefaultConfig() Config {
 	return Config{
 		AutoLoadPreviousState: true,
-		TelemetryEnabled:      true,
 		Selector: struct {
 			LastPath string `toml:"last_path"`
 		}{

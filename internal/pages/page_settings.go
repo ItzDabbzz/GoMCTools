@@ -10,18 +10,16 @@ import (
 )
 
 type settingsPage struct {
-	state            *ui.SharedState
-	telemetryEnabled bool
-	autoLoad         bool
-	width            int
-	height           int
+	state    *ui.SharedState
+	autoLoad bool
+	width    int
+	height   int
 }
 
 func NewSettingsPage(state *ui.SharedState) ui.Page {
 	return &settingsPage{
-		state:            state,
-		telemetryEnabled: state.Config.TelemetryEnabled,
-		autoLoad:         state.Config.AutoLoadPreviousState,
+		state:    state,
+		autoLoad: state.Config.AutoLoadPreviousState,
 	}
 }
 
@@ -35,12 +33,9 @@ func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		s.height = msg.Height
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, settingsKeys.ToggleTelemetry):
-			s.telemetryEnabled = !s.telemetryEnabled
 		case key.Matches(msg, settingsKeys.ToggleAutoLoad):
 			s.autoLoad = !s.autoLoad
 		case key.Matches(msg, settingsKeys.ResetDefaults):
-			s.telemetryEnabled = true
 			s.autoLoad = true
 			s.state.Config.Modlist.Mode = 0
 			s.state.Config.Modlist.AttachLinks = true
@@ -50,7 +45,6 @@ func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			s.state.Config.Modlist.IncludeFilename = false
 		}
 		// Sync config after any key.
-		s.state.Config.TelemetryEnabled = s.telemetryEnabled
 		s.state.Config.AutoLoadPreviousState = s.autoLoad
 	}
 	return s, nil
@@ -74,7 +68,6 @@ func (s *settingsPage) View() string {
 		)
 	}
 
-	telemRow := row(settingsKeys.ToggleTelemetry, toggle(s.telemetryEnabled), "Telemetry")
 	autoRow := row(settingsKeys.ToggleAutoLoad, toggle(s.autoLoad), "Auto-load previous pack on startup")
 
 	resetHint := lipgloss.JoinHorizontal(lipgloss.Top,
@@ -85,19 +78,18 @@ func (s *settingsPage) View() string {
 
 	note := dimStyle.Render("Settings are saved automatically on exit.")
 
-	lines := []string{title, "", telemRow, autoRow, "", resetHint, "", note}
+	lines := []string{title, "", autoRow, "", resetHint, "", note}
 	return strings.Join(lines, "\n")
 }
 
 // settingsKeyMap holds all bindings for the Settings page.
 type settingsKeyMap struct {
-	ToggleTelemetry key.Binding
-	ToggleAutoLoad  key.Binding
-	ResetDefaults   key.Binding
+	ToggleAutoLoad key.Binding
+	ResetDefaults  key.Binding
 }
 
 func (k settingsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.ToggleTelemetry, k.ToggleAutoLoad, k.ResetDefaults}
+	return []key.Binding{k.ToggleAutoLoad, k.ResetDefaults}
 }
 
 func (k settingsKeyMap) FullHelp() [][]key.Binding {
@@ -105,10 +97,6 @@ func (k settingsKeyMap) FullHelp() [][]key.Binding {
 }
 
 var settingsKeys = settingsKeyMap{
-	ToggleTelemetry: key.NewBinding(
-		key.WithKeys("t"),
-		key.WithHelp("t", "toggle telemetry"),
-	),
 	ToggleAutoLoad: key.NewBinding(
 		key.WithKeys("a"),
 		key.WithHelp("a", "toggle auto-load"),
