@@ -1,3 +1,12 @@
+/*
+Package ui implements a tabbed multi-page TUI application using Bubble Tea.
+It provides the root Model that manages tab switching via keyboard/mouse,
+renders a consistent framed layout (tab bar, content window, footer),
+handles window resizing with precise inner content dimensions passed to pages,
+and overlays contextual help. Pages implement the Page interface and can
+opt-in to advanced features like zone-based mouse handling, key capture,
+and rich help integration.
+*/
 package ui
 
 import (
@@ -11,6 +20,9 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
+// Model is the root application state, managing multiple Page instances
+// within a tabbed layout. It tracks dimensions, zones for mouse interaction,
+// shared app state, and built-in help.
 type Model struct {
 	pages         []Page
 	activePage    int
@@ -27,10 +39,15 @@ type Model struct {
 }
 
 const (
+	// MinWidth is the minimum usable terminal width.
 	MinWidth  = 60
+	// MinHeight is the minimum usable terminal height.
 	MinHeight = 15
 )
 
+// NewModel initializes a Model ready for tea.NewProgram.
+// It sets up the zone manager, default keys, and help model.
+// If state is nil, a new default SharedState is created.
 func NewModel(state *SharedState, pages []Page) Model {
 	if state == nil {
 		state = &SharedState{}
@@ -58,6 +75,10 @@ func (m Model) Init() tea.Cmd {
 	return m.pages[m.activePage].Init()
 }
 
+// Update processes all incoming tea.Msg.
+// It handles global navigation (tab switching, help toggle, quit) unless the
+// active page captures input. It also manages mouse zone interactions for tabs
+// and delegates specific messages to the active page.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if len(m.pages) == 0 {
 		return m, nil
