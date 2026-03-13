@@ -15,17 +15,50 @@ import (
 	"itzdabbzz.me/gomctools/internal/ui"
 )
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+var (
+	// pickerBorderInactive is shown while the filepicker is not focused.
+	pickerBorderInactive = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("240")).
+				Padding(0, 1)
+
+	// pickerBorderActive is shown while the filepicker owns arrow-key input.
+	pickerBorderActive = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(ui.HighlightColor).
+				Padding(0, 1)
+
+	// pickerHint nudges the user to activate the browser.
+	pickerHintStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true)
+)
+
+// ─── Page model ───────────────────────────────────────────────────────────────
+
 type selectorPage struct {
 	selectedPath string
 	status       string
 	state        *ui.SharedState
-	fp           filepicker.Model
-	input        textinput.Model
-	spin         spinner.Model
-	spinning     bool
-	pageWidth    int
-	pageHeight   int
+
+	fp       filepicker.Model
+	input    textinput.Model
+	spin     spinner.Model
+	spinning bool
+
+	// fpFocused controls whether the filepicker receives arrow-key input and
+	// whether CaptureGlobalNav returns true.  False by default so that the
+	// root tab-bar can still use arrow keys when the user first arrives on
+	// this page.
+	fpFocused bool
+
+	pageWidth  int
+	pageHeight int
 }
+
+// ─── Constructor ──────────────────────────────────────────────────────────────
 
 func NewSelectorPage(state *ui.SharedState) ui.Page {
 	fp := filepicker.New()
@@ -34,9 +67,9 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	fp.AllowedTypes = []string{}
 	fp.ShowHidden = true
 
-	// Reserve enter for loading; use l/right to descend into directories.
 	fp.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/→", "open dir"))
 	fp.KeyMap.Select = filepicker.DefaultKeyMap().Select
+
 	if home, err := os.UserHomeDir(); err == nil {
 		fp.CurrentDirectory = home
 	}
@@ -62,7 +95,7 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 
 	return &selectorPage{
 		selectedPath: lastPath,
-		status:       "Paste or type a path then press Enter, or use the browser below",
+		status:       "Type a path and press Enter — or press F to browse",
 		state:        state,
 		fp:           fp,
 		input:        ti,
@@ -70,11 +103,13 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	}
 }
 
+// ─── ui.Page interface ────────────────────────────────────────────────────────
+
 func (s *selectorPage) Title() string { return "Selector" }
 
-// CaptureGlobalNav returns true so that arrow keys and l/h are passed to the
-// filepicker rather than being consumed by the root tab navigator.
-func (s *selectorPage) CaptureGlobalNav() bool { return true }
+// CaptureGlobalNav only returns true while the filepicker is focused.
+// When false the root tab-bar receives arrow keys as normal.
+func (s *selectorPage) CaptureGlobalNav() bool { return s.fpFocused }
 
 func (s *selectorPage) Init() tea.Cmd {
 	cmds := []tea.Cmd{s.fp.Init(), textinput.Blink}
@@ -96,12 +131,14 @@ func (s *selectorPage) Init() tea.Cmd {
 func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Always route messages to the text input.
 	var inputCmd tea.Cmd
 	s.input, inputCmd = s.input.Update(msg)
 	if inputCmd != nil {
 		cmds = append(cmds, inputCmd)
 	}
 
+	// Keep the spinner ticking while loading.
 	if s.spinning {
 		var spinCmd tea.Cmd
 		s.spin, spinCmd = s.spin.Update(msg)
@@ -110,7 +147,21 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 	}
 
+	// Always forward non-keyboard messages to the filepicker so its internal
+	// directory-scan goroutines can populate the listing regardless of focus.
+	// Keyboard input is only forwarded when the picker is explicitly focused,
+	// which prevents arrow keys from leaking into the picker while navigating tabs.
+	_, isKeyMsg := msg.(tea.KeyMsg)
+	if !isKeyMsg || s.fpFocused {
+		var fpCmd tea.Cmd
+		s.fp, fpCmd = s.fp.Update(msg)
+		if fpCmd != nil {
+			cmds = append(cmds, fpCmd)
+		}
+	}
+
 	switch typed := msg.(type) {
+
 	case ui.PackLoadedMsg:
 		s.spinning = false
 		if typed.Err != nil {
@@ -129,15 +180,42 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		s.updateLayout()
 
 	case tea.KeyMsg:
-		// Allow q/ctrl+c to quit even while selector captures global nav.
+		// Quit / help always work regardless of focus state.
 		if key.Matches(typed, ui.DefaultKeys.Quit) {
 			return s, tea.Quit
 		}
-		// Allow ? to toggle the help overlay.
 		if key.Matches(typed, ui.DefaultKeys.Help) {
 			return s, func() tea.Msg { return ui.ToggleHelpMsg{} }
 		}
-		if typed.Type == tea.KeyEnter {
+
+		// ── Filepicker focus management ────────────────────────────────────
+		// Escape releases the filepicker and gives arrow keys back to the
+		// root tab-bar.
+		if s.fpFocused && typed.Type == tea.KeyEsc {
+			s.fpFocused = false
+			s.input.Focus()
+			s.status = "Type a path and press Enter — or press F to browse"
+			return s, tea.Batch(cmds...)
+		}
+
+		// F (or Tab) activates the filepicker browser when it is not focused.
+		if !s.fpFocused && (typed.String() == "f" || typed.Type == tea.KeyTab) {
+			s.fpFocused = true
+			s.input.Blur()
+			s.status = "Browsing — Enter to load, Esc to exit browser"
+			// Sync the picker to whatever the text input contains, if valid.
+			if trimmed := strings.TrimSpace(s.input.Value()); trimmed != "" {
+				if info, err := os.Stat(trimmed); err == nil && info.IsDir() {
+					s.fp.CurrentDirectory = trimmed
+					cmds = append(cmds, s.fp.Init())
+				}
+			}
+			return s, tea.Batch(cmds...)
+		}
+
+		// ── Text-input Enter → load pack ──────────────────────────────────
+		// Only process Enter when the filepicker is not capturing input.
+		if !s.fpFocused && typed.Type == tea.KeyEnter {
 			trimmed := strings.TrimSpace(s.input.Value())
 			if trimmed == "" {
 				s.status = "Path cannot be empty"
@@ -166,41 +244,73 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			cmds = append(cmds, s.fp.Init(), spinner.Tick, ui.LoadPackCmd(abs))
 			return s, tea.Batch(cmds...)
 		}
-	}
 
-	var cmd tea.Cmd
-	s.fp, cmd = s.fp.Update(msg)
-	if cmd != nil {
-		cmds = append(cmds, cmd)
+		// ── Filepicker Enter → load selected directory ────────────────────
+		if s.fpFocused && typed.Type == tea.KeyEnter {
+			dir := s.fp.CurrentDirectory
+			if dir == "" {
+				return s, tea.Batch(cmds...)
+			}
+			abs, err := filepath.Abs(dir)
+			if err != nil {
+				s.status = "Could not resolve path"
+				return s, tea.Batch(cmds...)
+			}
+			s.fpFocused = false
+			s.input.Focus()
+			s.selectedPath = abs
+			s.status = "Loading pack…"
+			s.input.SetValue(abs)
+			s.spinning = true
+			s.state.Config.Selector.LastPath = abs
+			cmds = append(cmds, spinner.Tick, ui.LoadPackCmd(abs))
+			return s, tea.Batch(cmds...)
+		}
 	}
 
 	return s, tea.Batch(cmds...)
 }
 
+// ─── Layout ───────────────────────────────────────────────────────────────────
+
 func (s *selectorPage) updateLayout() {
 	if s.pageWidth == 0 || s.pageHeight == 0 {
 		return
 	}
-	innerWidth := s.pageWidth - ui.DocStyle.GetHorizontalFrameSize() - ui.WindowStyle.GetHorizontalFrameSize() - 2
+	// Account for doc + window frames plus the picker border (2 sides × 1 col padding + 1 border).
+	hFrame := ui.DocStyle.GetHorizontalFrameSize() +
+		ui.WindowStyle.GetHorizontalFrameSize() +
+		pickerBorderInactive.GetHorizontalFrameSize()
+	innerWidth := s.pageWidth - hFrame - 2
 	if innerWidth < 48 {
 		innerWidth = 48
 	}
 	s.input.Width = innerWidth
 
-	usableHeight := s.pageHeight - ui.DocStyle.GetVerticalFrameSize() - ui.WindowStyle.GetVerticalFrameSize() - 6
-	if usableHeight < 8 {
-		usableHeight = 8
+	// Reserve rows for: dir line, status, blank, path label, input, blank,
+	// hint, and the border's vertical frame.
+	reserved := ui.DocStyle.GetVerticalFrameSize() +
+		ui.WindowStyle.GetVerticalFrameSize() +
+		pickerBorderInactive.GetVerticalFrameSize() +
+		7 // dir + status + gap + label + input + gap + hint
+	usableHeight := s.pageHeight - reserved
+	if usableHeight < 6 {
+		usableHeight = 6
 	}
 	s.fp.Height = usableHeight
 }
 
+// ─── View ─────────────────────────────────────────────────────────────────────
+
 func (s *selectorPage) View() string {
 	var b strings.Builder
 
+	// ── Selected directory ────────────────────────────────────────────────
 	b.WriteString(labelStyle.Render("Directory: "))
 	b.WriteString(valueStyle.Render(s.selectedPath))
 	b.WriteString("\n")
 
+	// ── Status / spinner ──────────────────────────────────────────────────
 	if s.spinning {
 		b.WriteString(s.spin.View())
 		b.WriteString(statusStyle.Render(" Loading pack…"))
@@ -209,23 +319,44 @@ func (s *selectorPage) View() string {
 	}
 	b.WriteString("\n\n")
 
+	// ── Text input ────────────────────────────────────────────────────────
 	b.WriteString(labelStyle.Render("Path:"))
 	b.WriteString("\n")
 	b.WriteString(s.input.View())
 	b.WriteString("\n\n")
 
-	b.WriteString(s.fp.View())
+	// ── Filepicker with focus-aware border ────────────────────────────────
+	var hint string
+	borderStyle := pickerBorderInactive
+	if s.fpFocused {
+		borderStyle = pickerBorderActive
+		hint = pickerHintStyle.Render("↑/↓ navigate  l/→ open  Enter load  Esc exit browser")
+	} else {
+		hint = pickerHintStyle.Render("Press F (or Tab) to activate the directory browser")
+	}
+
+	pickerTitle := labelStyle.Render("Browse:")
+	pickerBox := borderStyle.Render(s.fp.View())
+	b.WriteString(pickerTitle)
+	b.WriteString("\n")
+	b.WriteString(pickerBox)
+	b.WriteString("\n")
+	b.WriteString(hint)
+
 	return b.String()
 }
 
-// selectorKeyMap holds the bindings relevant to the Selector page.
+// ─── Key help ─────────────────────────────────────────────────────────────────
+
 type selectorKeyMap struct {
-	LoadPack key.Binding
-	OpenDir  key.Binding
+	LoadPack   key.Binding
+	ActivateFP key.Binding
+	ExitFP     key.Binding
+	OpenDir    key.Binding
 }
 
 func (k selectorKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.LoadPack, k.OpenDir}
+	return []key.Binding{k.LoadPack, k.ActivateFP, k.ExitFP, k.OpenDir}
 }
 
 func (k selectorKeyMap) FullHelp() [][]key.Binding {
@@ -236,6 +367,14 @@ var selectorKeys = selectorKeyMap{
 	LoadPack: key.NewBinding(
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "load pack"),
+	),
+	ActivateFP: key.NewBinding(
+		key.WithKeys("f", "tab"),
+		key.WithHelp("f/tab", "activate browser"),
+	),
+	ExitFP: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "exit browser"),
 	),
 	OpenDir: key.NewBinding(
 		key.WithKeys("l", "right"),
