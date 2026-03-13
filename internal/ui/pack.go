@@ -16,6 +16,19 @@ import (
 	"itzdabbzz.me/gomctools/internal/config"
 )
 
+// ─── Pack source type ─────────────────────────────────────────────────────────
+
+// PackSourceType identifies the launcher / format the pack was imported from.
+type PackSourceType string
+
+const (
+	PackSourcePrism      PackSourceType = "prism"
+	PackSourceCurseForge PackSourceType = "curseforge"
+	PackSourceUnknown    PackSourceType = "unknown"
+)
+
+// ─── Shared state ─────────────────────────────────────────────────────────────
+
 // SharedState is the single source of truth shared across all pages.
 // It holds the currently loaded pack and the active configuration.
 type SharedState struct {
@@ -32,36 +45,43 @@ func NewSharedState() *SharedState {
 	}
 }
 
-// PackInfo represents the Prism instance that was loaded from disk.
+// ─── PackInfo ─────────────────────────────────────────────────────────────────
+
+// PackInfo represents the loaded pack regardless of source format.
+// Fields that are launcher-specific are documented with their origin.
 type PackInfo struct {
+	SourceType       PackSourceType // which launcher/format this pack came from
 	InstancePath     string
 	InstanceName     string
 	MinecraftDir     string
 	ModsDir          string
-	IndexDir         string
+	IndexDir         string       // Prism-only: path to mods/.index; empty for CurseForge
 	MinecraftVersion string
-	LoaderUID        string
+	LoaderUID        string       // e.g. "net.neoforged", "net.minecraftforge"
 	LoaderVersion    string
-	Manifest         *MMCManifest
+	Manifest         *MMCManifest // Prism-only: parsed mmc-pack.json; nil for CurseForge
 	Mods             []IndexedMod
 	Counts           ModCounts
 }
 
-// IndexedMod captures the relevant fields from a Prism Launcher .index TOML entry.
+// ─── Shared mod types ─────────────────────────────────────────────────────────
+
+// IndexedMod captures the relevant fields from any mod source.
+// Fields that cannot be populated for a given source are left as zero values.
 type IndexedMod struct {
 	Name          string
 	Filename      string
 	Source        ModSource
 	ReleaseType   string
-	Side          string
-	Loaders       []string
+	Side          string    // empty for CurseForge (not exposed by the API)
+	Loaders       []string  // empty for CurseForge
 	GameVersions  []string
 	DownloadURL   string
 	Hash          string
 	HashFormat    string
 	UpdateVersion string
-	ModrinthID    string
-	CurseProject  int
+	ModrinthID    string // Modrinth-only
+	CurseProject  int    // CurseForge-only: addonID / projectID
 }
 
 // ModCounts provides quick totals for the dashboard.
@@ -71,6 +91,17 @@ type ModCounts struct {
 	Curseforge int
 	Unknown    int
 }
+
+// ModSource classifies how a mod should be grouped in the dashboard.
+type ModSource string
+
+const (
+	SourceUnknown    ModSource = "unknown"
+	SourceModrinth   ModSource = "modrinth"
+	SourceCurseforge ModSource = "curseforge"
+)
+
+// ─── Prism-specific types ─────────────────────────────────────────────────────
 
 // MMCManifest mirrors Prism's mmc-pack.json.
 type MMCManifest struct {
@@ -88,15 +119,6 @@ type MMCComponent struct {
 	DependencyOnly bool   `json:"dependencyOnly"`
 	Important      bool   `json:"important"`
 }
-
-// ModSource classifies how a mod should be grouped in the dashboard.
-type ModSource string
-
-const (
-	SourceUnknown    ModSource = "unknown"
-	SourceModrinth   ModSource = "modrinth"
-	SourceCurseforge ModSource = "curseforge"
-)
 
 type indexFile struct {
 	Filename     string        `toml:"filename"`
@@ -131,6 +153,8 @@ type indexCurseforge struct {
 	FileID    int `toml:"file-id"`
 }
 
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
 // PackLoadedMsg is emitted by LoadPackCmd when pack loading completes.
 // If Err is non-nil the load failed and Info should be considered empty.
 type PackLoadedMsg struct {
@@ -138,8 +162,9 @@ type PackLoadedMsg struct {
 	Err  error
 }
 
-// LoadPackCmd returns a Cmd that loads the Prism instance rooted at root
-// and broadcasts the result as a PackLoadedMsg.
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+// LoadPackCmd returns a Cmd that loads the pack at root and broadcasts the result.
 func LoadPackCmd(root string) tea.Cmd {
 	return func() tea.Msg {
 		info, err := LoadPack(root)
@@ -147,15 +172,92 @@ func LoadPackCmd(root string) tea.Cmd {
 	}
 }
 
-// LoadPack scans the Prism instance on disk and returns its metadata and mods.
+// LoadPack auto-detects the pack format (Prism or CurseForge) and loads its metadata.
+// Detection walks up from root, preferring mmc-pack.json (Prism) over
+// minecraftinstance.json / manifest.json (CurseForge).
 func LoadPack(root string) (PackInfo, error) {
-	resolvedRoot, err := resolveInstanceRoot(root)
+	resolved, sourceType, err := resolveRoot(root)
 	if err != nil {
 		return PackInfo{}, err
 	}
-	root = resolvedRoot
+	switch sourceType {
+	case PackSourceCurseForge:
+		return loadCurseForgePack(resolved)
+	case PackSourcePrism:
+		return loadPrismPack(resolved)
+	default:
+		return PackInfo{}, fmt.Errorf(
+			"no supported pack manifest found at or above %s — expected mmc-pack.json or minecraftinstance.json",
+			root,
+		)
+	}
+}
 
+// ─── Root resolution ─────────────────────────────────────────────────────────
+
+// resolveRoot walks up from input until it finds a supported pack manifest.
+// mmc-pack.json is checked before CurseForge files so that Prism instances
+// are never misidentified even if a CurseForge manifest is present nearby.
+func resolveRoot(input string) (string, PackSourceType, error) {
+	abs, err := filepath.Abs(strings.TrimSpace(input))
+	if err != nil {
+		return "", PackSourceUnknown, fmt.Errorf("resolve path: %w", err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", PackSourceUnknown, fmt.Errorf("stat path: %w", err)
+	}
+	if !info.IsDir() {
+		abs = filepath.Dir(abs)
+	}
+
+	for p := abs; ; p = filepath.Dir(p) {
+		if fileExists(filepath.Join(p, "mmc-pack.json")) {
+			return p, PackSourcePrism, nil
+		}
+		if fileExists(filepath.Join(p, "minecraftinstance.json")) {
+			return p, PackSourceCurseForge, nil
+		}
+		// manifest.json is common enough that we peek inside before claiming it.
+		if fileExists(filepath.Join(p, "manifest.json")) && isCFManifestFile(filepath.Join(p, "manifest.json")) {
+			return p, PackSourceCurseForge, nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			break
+		}
+	}
+	return "", PackSourceUnknown, fmt.Errorf(
+		"no supported pack manifest found above %s",
+		abs,
+	)
+}
+
+// isCFManifestFile peeks at a manifest.json to confirm it carries the
+// CurseForge "minecraftModpack" manifest type before claiming CurseForge ownership.
+func isCFManifestFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	var probe struct {
+		ManifestType string `json:"manifestType"`
+	}
+	if err := json.NewDecoder(f).Decode(&probe); err != nil {
+		return false
+	}
+	return probe.ManifestType == "minecraftModpack"
+}
+
+// ─── Prism loader ─────────────────────────────────────────────────────────────
+// All logic below is unchanged from the original implementation.
+
+// loadPrismPack loads a Prism Launcher instance from its resolved root directory.
+func loadPrismPack(root string) (PackInfo, error) {
 	info := PackInfo{
+		SourceType:   PackSourcePrism,
 		InstancePath: root,
 		InstanceName: filepath.Base(root),
 		MinecraftDir: filepath.Join(root, "minecraft"),
@@ -163,7 +265,7 @@ func LoadPack(root string) (PackInfo, error) {
 		IndexDir:     filepath.Join(root, "minecraft", "mods", ".index"),
 	}
 
-	manifest, err := readManifest(filepath.Join(root, "mmc-pack.json"))
+	manifest, err := readMMCManifest(filepath.Join(root, "mmc-pack.json"))
 	if err != nil {
 		return info, err
 	}
@@ -176,40 +278,10 @@ func LoadPack(root string) (PackInfo, error) {
 	}
 	info.Mods = mods
 	info.Counts = counts
-
 	return info, nil
 }
 
-// resolveInstanceRoot walks up from the provided path until it finds mmc-pack.json.
-// It allows users to pass the instance root, minecraft folder, or mods folder.
-func resolveInstanceRoot(input string) (string, error) {
-	abs, err := filepath.Abs(strings.TrimSpace(input))
-	if err != nil {
-		return "", fmt.Errorf("resolve path: %w", err)
-	}
-
-	info, err := os.Stat(abs)
-	if err != nil {
-		return "", fmt.Errorf("stat path: %w", err)
-	}
-	if !info.IsDir() {
-		abs = filepath.Dir(abs)
-	}
-
-	for p := abs; ; p = filepath.Dir(p) {
-		if fileExists(filepath.Join(p, "mmc-pack.json")) {
-			return p, nil
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			break
-		}
-	}
-
-	return "", fmt.Errorf("could not find mmc-pack.json above %s", abs)
-}
-
-func readManifest(path string) (*MMCManifest, error) {
+func readMMCManifest(path string) (*MMCManifest, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -217,27 +289,30 @@ func readManifest(path string) (*MMCManifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read mmc-pack.json: %w", err)
 	}
-
-	var manifest MMCManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
+	var m MMCManifest
+	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse mmc-pack.json: %w", err)
 	}
-	return &manifest, nil
+	return &m, nil
 }
 
 func summarizeComponents(manifest *MMCManifest) (minecraft, loaderUID, loaderVersion string) {
 	if manifest == nil {
 		return "", "", ""
 	}
-
 	for _, c := range manifest.Components {
 		if c.UID == "net.minecraft" {
 			minecraft = c.Version
 			break
 		}
 	}
-
-	for _, preferred := range []string{"net.neoforged", "net.minecraftforge", "net.fabricmc.fabric-loader", "net.fabricmc.intermediary", "org.quiltmc.quilt-loader"} {
+	for _, preferred := range []string{
+		"net.neoforged",
+		"net.minecraftforge",
+		"net.fabricmc.fabric-loader",
+		"net.fabricmc.intermediary",
+		"org.quiltmc.quilt-loader",
+	} {
 		for _, c := range manifest.Components {
 			if c.UID == preferred {
 				loaderUID = c.UID
@@ -246,7 +321,6 @@ func summarizeComponents(manifest *MMCManifest) (minecraft, loaderUID, loaderVer
 			}
 		}
 	}
-
 	return minecraft, loaderUID, loaderVersion
 }
 
@@ -271,12 +345,10 @@ func loadIndexEntries(indexDir string) ([]IndexedMod, ModCounts, error) {
 		if err != nil {
 			return nil, counts, fmt.Errorf("read %s: %w", entry.Name(), err)
 		}
-
 		var idx indexFile
 		if err := toml.Unmarshal(data, &idx); err != nil {
 			return nil, counts, fmt.Errorf("parse %s: %w", entry.Name(), err)
 		}
-
 		mod := toIndexedMod(idx)
 		mods = append(mods, mod)
 		switch mod.Source {
@@ -290,41 +362,36 @@ func loadIndexEntries(indexDir string) ([]IndexedMod, ModCounts, error) {
 	}
 
 	sort.Slice(mods, func(i, j int) bool {
-		left := strings.ToLower(mods[i].Name)
-		right := strings.ToLower(mods[j].Name)
-		if left == right {
+		l, r := strings.ToLower(mods[i].Name), strings.ToLower(mods[j].Name)
+		if l == r {
 			return mods[i].Filename < mods[j].Filename
 		}
-		return left < right
+		return l < r
 	})
-
 	counts.Total = len(mods)
 	return mods, counts, nil
 }
 
 func toIndexedMod(idx indexFile) IndexedMod {
 	mod := IndexedMod{
-		Name:          idx.Name,
-		Filename:      idx.Filename,
-		ReleaseType:   idx.ReleaseType,
-		Side:          idx.Side,
-		Loaders:       idx.Loaders,
-		GameVersions:  idx.GameVersions,
-		DownloadURL:   idx.Download.URL,
-		Hash:          idx.Download.Hash,
-		HashFormat:    idx.Download.HashFormat,
-		UpdateVersion: "",
-		ModrinthID:    "",
-		CurseProject:  0,
+		Name:         idx.Name,
+		Filename:     idx.Filename,
+		ReleaseType:  idx.ReleaseType,
+		Side:         idx.Side,
+		Loaders:      idx.Loaders,
+		GameVersions: idx.GameVersions,
+		DownloadURL:  idx.Download.URL,
+		Hash:         idx.Download.Hash,
+		HashFormat:   idx.Download.HashFormat,
 	}
-
 	if idx.Update.Modrinth != nil {
 		mod.Source = SourceModrinth
 		mod.UpdateVersion = idx.Update.Modrinth.Version
 		mod.ModrinthID = idx.Update.Modrinth.ModID
 	} else if idx.Update.Curseforge != nil {
 		mod.Source = SourceCurseforge
-		mod.UpdateVersion = fmt.Sprintf("project %d file %d", idx.Update.Curseforge.ProjectID, idx.Update.Curseforge.FileID)
+		mod.UpdateVersion = fmt.Sprintf("project %d file %d",
+			idx.Update.Curseforge.ProjectID, idx.Update.Curseforge.FileID)
 		mod.CurseProject = idx.Update.Curseforge.ProjectID
 	} else if strings.Contains(strings.ToLower(idx.Download.URL), "modrinth") {
 		mod.Source = SourceModrinth
@@ -333,9 +400,10 @@ func toIndexedMod(idx indexFile) IndexedMod {
 	} else {
 		mod.Source = SourceUnknown
 	}
-
 	return mod
 }
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
