@@ -113,15 +113,15 @@ func GetConfigPath() (string, error) {
 // If the file does not exist, DefaultConfig is returned without error.
 func Load() (Config, error) {
 	path, err := GetConfigPath()
-	logger.Debug("Got Config Path: ", path)
 	if err != nil {
-		logger.Error("Error Getting Config Path: ", err)
+		logger.Error("Error Getting Config Path", "error", err)
 		return DefaultConfig(), err
 	}
+	logger.Debug("Loading config file", "path", path)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		logger.Error("Error Loading Config: ", err)
+		logger.Error("Error Loading Config", "error", err)
 		if errors.Is(err, os.ErrNotExist) {
 			return DefaultConfig(), nil
 		}
@@ -130,7 +130,7 @@ func Load() (Config, error) {
 
 	var cfg Config
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		logger.Error("Error Parsing Config: ", err)
+		logger.Error("Error Parsing Config", "error", err)
 		return DefaultConfig(), fmt.Errorf("parse config: %w", err)
 	}
 
@@ -146,7 +146,7 @@ func Save(cfg Config) error {
 
 	data, err := toml.Marshal(cfg)
 	if err != nil {
-		logger.Error("Error Saving Config: ", err)
+		logger.Error("Error Saving Config", "error", err)
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
