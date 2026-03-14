@@ -6,8 +6,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "05:00"
-      timezone: "America/New_York"
+      time: "12:00"
+      timezone: "America/Chicago"
     labels:
       - "dependencies"
     commit-message:
@@ -27,8 +27,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "05:00"
-      timezone: "America/New_York"
+      time: "12:00"
+      timezone: "America/Chicago"
     labels:
       - "dependencies"
     commit-message:
@@ -44,8 +44,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "05:00"
-      timezone: "America/New_York"
+      time: "12:00"
+      timezone: "America/Chicago"
     labels:
       - "dependencies"
     commit-message:
