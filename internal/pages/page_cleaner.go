@@ -16,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/ItzDabbzz/GoMCTools/internal/config"
+	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 	zone "github.com/lrstanley/bubblezone/v2"
 )
@@ -136,6 +137,7 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch m := msg.(type) {
 	case ui.PackLoadedMsg:
 		if m.Err != nil {
+			logger.Error("Cleaner: failed to load pack metadata: %v", m.Err)
 			c.status = fmt.Sprintf("Load failed: %v", m.Err)
 			return c, nil
 		}
@@ -150,6 +152,7 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 	case cleanerStepMsg:
 		if m.Err != nil {
+			logger.Error("Cleaner: error cleaning preset %s: %v", m.Preset, m.Err)
 			c.workErrors = append(c.workErrors, fmt.Sprintf("%s: %v", m.Preset, m.Err))
 		}
 		c.processed += m.Count
@@ -176,6 +179,7 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		c.progress.SetPercent(1)
 	case cleanerLoadedMsg:
 		if m.Err != nil {
+			logger.Error("Cleaner: failed to load custom presets from pack: %v", m.Err)
 			c.status = fmt.Sprintf("Config load failed: %v", m.Err)
 			return c, nil
 		}
@@ -183,6 +187,7 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		c.status = "Presets loaded. Toggle and press c to clean."
 	case cleanerSavedMsg:
 		if m.Err != nil {
+			logger.Error("Cleaner: failed to persist custom presets: %v", m.Err)
 			c.status = fmt.Sprintf("Save failed: %v", m.Err)
 		} else {
 			c.status = "Presets saved."

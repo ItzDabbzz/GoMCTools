@@ -10,6 +10,7 @@ import (
 
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 	"github.com/atotto/clipboard"
 )
@@ -493,6 +494,7 @@ func (m *modlistPage) exportToFile() string {
 		path = filepath.Join(".", filename)
 	}
 	if err := os.WriteFile(path, []byte(m.markdown), 0o644); err != nil {
+		logger.Error("Modlist: failed to export file to %s: %v", path, err)
 		return fmt.Sprintf("Export failed: %v", err)
 	}
 	return fmt.Sprintf("Exported to %s", path)
@@ -504,6 +506,7 @@ func (m *modlistPage) copyMarkdown() string {
 		return "Nothing to copy"
 	}
 	if err := clipboard.WriteAll(m.markdown); err != nil {
+		logger.Error("Modlist: failed to copy to clipboard: %v", err)
 		return fmt.Sprintf("Copy failed: %v", err)
 	}
 	switch m.outputFormat {

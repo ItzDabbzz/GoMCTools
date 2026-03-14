@@ -185,7 +185,7 @@ func loadFromCFInstance(root, instancePath, manifestPath string, info PackInfo) 
 func loadFromCFManifest(manifestPath string, info PackInfo) (PackInfo, error) {
 	m, err := readCFManifest(manifestPath)
 	if err != nil {
-		return info, fmt.Errorf("parse manifest.json: %w", err)
+		return info, fmt.Errorf("failed to read curseforge manifest: %w", err)
 	}
 
 	if m.Name != "" {

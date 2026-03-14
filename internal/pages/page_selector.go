@@ -12,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 	"charm.land/lipgloss/v2"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
@@ -157,15 +158,18 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 				}
 				info, err := os.Stat(trimmed)
 				if err != nil {
+					logger.Error("Selector: path %q not found: %v", trimmed, err)
 					s.status = "Path not found"
 					return s, tea.Batch(cmds...)
 				}
 				if !info.IsDir() {
+					logger.Error("Selector: path %q is not a directory", trimmed)
 					s.status = "Path is not a directory"
 					return s, tea.Batch(cmds...)
 				}
 				abs, err := filepath.Abs(trimmed)
 				if err != nil {
+					logger.Error("Selector: could not resolve absolute path for %q: %v", trimmed, err)
 					s.status = "Could not resolve absolute path"
 					return s, tea.Batch(cmds...)
 				}

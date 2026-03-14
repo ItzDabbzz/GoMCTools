@@ -183,7 +183,7 @@ func LoadPackCmd(root string) tea.Cmd {
 func LoadPack(root string) (PackInfo, error) {
 	resolved, sourceType, err := resolveRoot(root)
 	if err != nil {
-		return PackInfo{}, err
+		return PackInfo{}, fmt.Errorf("resolving pack root: %w", err)
 	}
 	switch sourceType {
 	case PackSourceCurseForge:

@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	zone "github.com/lrstanley/bubblezone/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 )
 
 // Model is the root application state, managing multiple Page instances
@@ -155,6 +156,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PackLoadedMsg:
 		if m.state != nil {
 			if msg.Err != nil {
+				logger.Error("Failed to load pack: %v", msg.Err)
 				m.state.LastLoadError = msg.Err.Error()
 				m.state.Pack = PackInfo{}
 			} else {

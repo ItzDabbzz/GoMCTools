@@ -18,6 +18,7 @@ var homeLogo = []string{
 }
 
 var homeSubtitle = "CurseForge & Prism Launcher Minecraft modpack tools"
+var homeAuthor = "Made with 🖤 by ItzDabbzz"
 
 type homePage struct {
 	width  int
@@ -85,7 +86,16 @@ func (h *homePage) View() string {
 		Align(lipgloss.Center).
 		Render("Press enter or tab to get started")
 
-	content := lipgloss.JoinVertical(lipgloss.Center, logoStyled, "", subtitleStyled, "", hintStyled)
+	authorStyled := lipgloss.NewStyle().
+		Foreground(ui.HighlightColor).
+		Italic(true).
+		Width(logoWidth).
+		Align(lipgloss.Center).
+		Hyperlink("https://github.com/ItzDabbzz/GoMCTools").
+		MarginTop(5).
+		Render(homeAuthor)
+
+	content := lipgloss.JoinVertical(lipgloss.Center, logoStyled, "", subtitleStyled, "", hintStyled, "", authorStyled)
 
 	// Use Width + Align to center the content within available width
 	if displayWidth > 0 {

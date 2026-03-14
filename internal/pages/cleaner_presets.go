@@ -121,7 +121,7 @@ func deletePreset(root string, preset cleanerPreset) (int, error) {
 func countEntries(root string, preset cleanerPreset) (int, error) {
 	target := filepath.Clean(filepath.Join(root, normalizePattern(preset.Pattern)))
 	if !strings.HasPrefix(target, filepath.Clean(root)) {
-		return 0, fmt.Errorf("outside root")
+		return 0, fmt.Errorf("refusing to count entries outside root: %s", target)
 	}
 	info, err := os.Stat(target)
 	if err != nil {
@@ -175,7 +175,7 @@ func readCleanerConfig(root string) ([]cleanerPreset, error) {
 	}
 	var cfg cleanerConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal cleaner config: %w", err)
 	}
 	return normalizeCustom(cfg.Custom), nil
 }
@@ -189,7 +189,7 @@ func writeCleanerConfig(root string, presets []cleanerPreset) error {
 	cfg := cleanerConfig{Custom: normalizeCustom(presets)}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal cleaner config: %w", err)
 	}
 	return os.WriteFile(path, data, 0o644)
 }
