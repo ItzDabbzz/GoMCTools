@@ -1,4 +1,4 @@
-name: CI
+name: Lint
 
 on:
   push:
@@ -24,19 +24,9 @@ jobs:
         run: go mod verify
 
       - name: Run Linter
-        uses: golangci-lint/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.10
           # Optionally add: skip-cache: true if you run into caching issues
 
-      - name: Build
-        run: go build -v -o gomctools .
 
-      - name: Run tests
-        run: go test -v ./...
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gomctools-binary
-          path: gomctools

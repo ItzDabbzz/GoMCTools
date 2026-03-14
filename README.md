@@ -1,7 +1,7 @@
 # GoMCTools
 
-![Go Badge](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=fff&style=flat) ![Arch Linux Badge](https://img.shields.io/badge/Arch%20Linux-1793D1?logo=archlinux&logoColor=fff&style=flat)
-[![Cash App Badge](https://img.shields.io/badge/Cash%20App-00C244?logo=cashapp&logoColor=fff&style=flat)](https://cash.app/$ItzDavL)
+![Go Badge](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=fff&style=flat) 
+
 
 ---
 
@@ -196,4 +196,10 @@ Built with the Charm stack:
 
 ---
 
+
+
+[![Cash App Badge](https://img.shields.io/badge/Cash%20App-00C244?logo=cashapp&logoColor=fff&style=flat)](https://cash.app/$ItzDavL)
+
 *Created by ItzDabbzz* (First go project, kinda nevrous 👉👈)
+
+Also made on ![Arch Linux Badge](https://img.shields.io/badge/Arch%20Linux-1793D1?logo=archlinux&logoColor=fff&style=flat)
