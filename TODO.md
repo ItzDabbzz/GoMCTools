@@ -2,13 +2,16 @@
 
 # IMPORTANT FIXES NEEDED
 
-- [ ] Help Menu's Need Entire Rework, currently dont account for terminal size...
+- [ ] Error Handling app wide
 - [ ] In pack cleaner, setup a way to clean out the maps folder in `/config/bluemap/maps/` to prevent errors
 
 # General Ideas
 
 - [x] Prism Launcher Support
-- [ ] Curseforge App Support
+- [x] Curseforge App Support
+- [ ] General build support
+   - [ ] Makefile
+   - [ ] Github workflows
 - [ ] Git support
    - [ ] Create git repo
    - [ ] Track file changes

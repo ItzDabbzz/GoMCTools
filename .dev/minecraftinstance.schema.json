@@ -1,0 +1,1426 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Generated schema for curseforge minecraftinstance.json",
+  "type": "object",
+  "properties": {
+    "baseModLoader": {
+      "type": "object",
+      "properties": {
+        "forgeVersion": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "number"
+        },
+        "downloadUrl": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "installMethod": {
+          "type": "number"
+        },
+        "latest": {
+          "type": "boolean"
+        },
+        "recommended": {
+          "type": "boolean"
+        },
+        "versionJson": {
+          "type": "string"
+        },
+        "librariesInstallLocation": {
+          "type": "string"
+        },
+        "minecraftVersion": {
+          "type": "string"
+        },
+        "installProfileJson": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "forgeVersion",
+        "name",
+        "type",
+        "downloadUrl",
+        "filename",
+        "installMethod",
+        "latest",
+        "recommended",
+        "versionJson",
+        "librariesInstallLocation",
+        "minecraftVersion",
+        "installProfileJson"
+      ]
+    },
+    "isUnlocked": {
+      "type": "boolean"
+    },
+    "javaArgsOverride": {},
+    "lastPlayed": {
+      "type": "string"
+    },
+    "playedCount": {
+      "type": "number"
+    },
+    "timePlayed": {
+      "type": "number"
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "minecraft": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string"
+            },
+            "additionalJavaArgs": {},
+            "modLoaders": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "primary"
+                ]
+              }
+            },
+            "libraries": {},
+            "recommendedRam": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "version",
+            "additionalJavaArgs",
+            "modLoaders",
+            "libraries",
+            "recommendedRam"
+          ]
+        },
+        "manifestType": {
+          "type": "string"
+        },
+        "manifestVersion": {
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "description": {},
+        "projectID": {},
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "projectID": {
+                "type": "number"
+              },
+              "fileID": {
+                "type": "number"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "isLocked": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "projectID",
+              "fileID",
+              "required",
+              "isLocked"
+            ]
+          }
+        },
+        "overrides": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "minecraft",
+        "manifestType",
+        "manifestVersion",
+        "name",
+        "version",
+        "author",
+        "description",
+        "projectID",
+        "files",
+        "overrides"
+      ]
+    },
+    "fileDate": {
+      "type": "string"
+    },
+    "installedModpack": {
+      "type": "object",
+      "properties": {
+        "instanceID": {
+          "type": "string"
+        },
+        "modSource": {
+          "type": "number"
+        },
+        "addonID": {
+          "type": "number"
+        },
+        "gameID": {
+          "type": "number"
+        },
+        "categoryClassID": {
+          "type": "number"
+        },
+        "categorySection": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "number"
+            },
+            "gameId": {
+              "type": "number"
+            },
+            "name": {
+              "type": "string"
+            },
+            "packageType": {
+              "type": "number"
+            },
+            "path": {
+              "type": "string"
+            },
+            "initialInclusionPattern": {
+              "type": "string"
+            },
+            "gameCategoryId": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "gameId",
+            "name",
+            "packageType",
+            "path",
+            "initialInclusionPattern",
+            "gameCategoryId"
+          ]
+        },
+        "categoryIds": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "gameInstanceID": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "modFolderPath": {
+          "type": "string"
+        },
+        "fileNameOnDisk": {
+          "type": "string"
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "number"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ]
+          }
+        },
+        "primaryAuthor": {
+          "type": "string"
+        },
+        "primaryCategoryId": {
+          "type": "number"
+        },
+        "packageType": {
+          "type": "number"
+        },
+        "webSiteURL": {
+          "type": "string"
+        },
+        "issuesURL": {
+          "type": "string"
+        },
+        "wikiURL": {
+          "type": "string"
+        },
+        "thumbnailUrl": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {}
+        },
+        "installedFile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "number"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "fileDate": {
+              "type": "string"
+            },
+            "fileLength": {
+              "type": "number"
+            },
+            "releaseType": {
+              "type": "number"
+            },
+            "fileStatus": {
+              "type": "number"
+            },
+            "downloadUrl": {
+              "type": "string"
+            },
+            "isAlternate": {
+              "type": "boolean"
+            },
+            "alternateFileId": {
+              "type": "number"
+            },
+            "serverPackFileId": {
+              "type": "number"
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {}
+            },
+            "isAvailable": {
+              "type": "boolean"
+            },
+            "modules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "foldername": {
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "type": "number"
+                  },
+                  "invalidFingerprint": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "foldername",
+                  "fingerprint",
+                  "invalidFingerprint"
+                ]
+              }
+            },
+            "packageFingerprint": {
+              "type": "number"
+            },
+            "gameVersion": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sortableGameVersion": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "gameVersionName": {
+                    "type": "string"
+                  },
+                  "gameVersionTypeId": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "gameVersion",
+                  "gameVersionName",
+                  "gameVersionTypeId"
+                ]
+              }
+            },
+            "isCompatibleWithClient": {
+              "type": "boolean"
+            },
+            "isEarlyAccessContent": {
+              "type": "boolean"
+            },
+            "restrictProjectFileAccess": {
+              "type": "number"
+            },
+            "projectStatus": {
+              "type": "number"
+            },
+            "projectId": {
+              "type": "number"
+            },
+            "fileNameOnDisk": {
+              "type": "string"
+            },
+            "hashes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "number"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ]
+              }
+            }
+          },
+          "required": [
+            "id",
+            "fileName",
+            "fileDate",
+            "fileLength",
+            "releaseType",
+            "fileStatus",
+            "downloadUrl",
+            "isAlternate",
+            "alternateFileId",
+            "serverPackFileId",
+            "dependencies",
+            "isAvailable",
+            "modules",
+            "packageFingerprint",
+            "gameVersion",
+            "sortableGameVersion",
+            "isCompatibleWithClient",
+            "isEarlyAccessContent",
+            "restrictProjectFileAccess",
+            "projectStatus",
+            "projectId",
+            "fileNameOnDisk",
+            "hashes"
+          ]
+        },
+        "dateInstalled": {
+          "type": "string"
+        },
+        "dateUpdated": {
+          "type": "string"
+        },
+        "status": {
+          "type": "number"
+        },
+        "installSource": {
+          "type": "number"
+        },
+        "preferenceReleaseType": {},
+        "preferenceAutoInstallUpdates": {},
+        "preferenceAlternateFile": {
+          "type": "boolean"
+        },
+        "isEnabled": {
+          "type": "boolean"
+        },
+        "isLocked": {
+          "type": "boolean"
+        },
+        "filePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferenceIsIgnored": {
+          "type": "boolean"
+        },
+        "isModified": {
+          "type": "boolean"
+        },
+        "isWorkingCopy": {
+          "type": "boolean"
+        },
+        "isFuzzyMatch": {
+          "type": "boolean"
+        },
+        "manifestName": {},
+        "installedTargets": {
+          "type": "array",
+          "items": {}
+        },
+        "latestFile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "number"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "fileDate": {
+              "type": "string"
+            },
+            "fileLength": {
+              "type": "number"
+            },
+            "releaseType": {
+              "type": "number"
+            },
+            "fileStatus": {
+              "type": "number"
+            },
+            "downloadUrl": {
+              "type": "string"
+            },
+            "isAlternate": {
+              "type": "boolean"
+            },
+            "alternateFileId": {
+              "type": "number"
+            },
+            "serverPackFileId": {
+              "type": "number"
+            },
+            "dependencies": {
+              "type": "array",
+              "items": {}
+            },
+            "isAvailable": {
+              "type": "boolean"
+            },
+            "modules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "foldername": {
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "type": "number"
+                  },
+                  "invalidFingerprint": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "foldername",
+                  "fingerprint",
+                  "invalidFingerprint"
+                ]
+              }
+            },
+            "packageFingerprint": {
+              "type": "number"
+            },
+            "gameVersion": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sortableGameVersion": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "gameVersion": {
+                    "type": "string"
+                  },
+                  "gameVersionName": {
+                    "type": "string"
+                  },
+                  "gameVersionTypeId": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "gameVersion",
+                  "gameVersionName",
+                  "gameVersionTypeId"
+                ]
+              }
+            },
+            "isCompatibleWithClient": {
+              "type": "boolean"
+            },
+            "isEarlyAccessContent": {
+              "type": "boolean"
+            },
+            "restrictProjectFileAccess": {
+              "type": "number"
+            },
+            "projectStatus": {
+              "type": "number"
+            },
+            "projectId": {
+              "type": "number"
+            },
+            "fileNameOnDisk": {
+              "type": "string"
+            },
+            "hashes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "number"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ]
+              }
+            }
+          },
+          "required": [
+            "id",
+            "fileName",
+            "fileDate",
+            "fileLength",
+            "releaseType",
+            "fileStatus",
+            "downloadUrl",
+            "isAlternate",
+            "alternateFileId",
+            "serverPackFileId",
+            "dependencies",
+            "isAvailable",
+            "modules",
+            "packageFingerprint",
+            "gameVersion",
+            "sortableGameVersion",
+            "isCompatibleWithClient",
+            "isEarlyAccessContent",
+            "restrictProjectFileAccess",
+            "projectStatus",
+            "projectId",
+            "fileNameOnDisk",
+            "hashes"
+          ]
+        },
+        "allowModDistribution": {
+          "type": "boolean"
+        },
+        "exportDisabledReason": {
+          "type": "number"
+        },
+        "groupId": {}
+      },
+      "required": [
+        "instanceID",
+        "modSource",
+        "addonID",
+        "gameID",
+        "categoryClassID",
+        "categorySection",
+        "categoryIds",
+        "gameInstanceID",
+        "name",
+        "modFolderPath",
+        "fileNameOnDisk",
+        "authors",
+        "primaryAuthor",
+        "primaryCategoryId",
+        "packageType",
+        "webSiteURL",
+        "issuesURL",
+        "wikiURL",
+        "thumbnailUrl",
+        "tags",
+        "installedFile",
+        "dateInstalled",
+        "dateUpdated",
+        "status",
+        "installSource",
+        "preferenceReleaseType",
+        "preferenceAutoInstallUpdates",
+        "preferenceAlternateFile",
+        "isEnabled",
+        "isLocked",
+        "filePaths",
+        "preferenceIsIgnored",
+        "isModified",
+        "isWorkingCopy",
+        "isFuzzyMatch",
+        "manifestName",
+        "installedTargets",
+        "latestFile",
+        "allowModDistribution",
+        "exportDisabledReason",
+        "groupId"
+      ]
+    },
+    "projectID": {
+      "type": "number"
+    },
+    "fileID": {
+      "type": "number"
+    },
+    "customAuthor": {},
+    "modpackOverrides": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "isMemoryOverride": {
+      "type": "boolean"
+    },
+    "allocatedMemory": {
+      "type": "number"
+    },
+    "profileImagePath": {},
+    "groupId": {},
+    "isVanilla": {
+      "type": "boolean"
+    },
+    "guid": {
+      "type": "string"
+    },
+    "gameTypeID": {
+      "type": "number"
+    },
+    "installPath": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "cachedScans": {
+      "type": "array",
+      "items": {}
+    },
+    "isValid": {
+      "type": "boolean"
+    },
+    "lastPreviousMatchUpdate": {
+      "type": "string"
+    },
+    "lastRefreshAttempt": {
+      "type": "string"
+    },
+    "isEnabled": {
+      "type": "boolean"
+    },
+    "gameVersion": {
+      "type": "string"
+    },
+    "gameVersionFlavor": {},
+    "gameVersionTypeId": {},
+    "preferenceAlternateFile": {
+      "type": "boolean"
+    },
+    "preferenceAutoInstallUpdates": {
+      "type": "boolean"
+    },
+    "preferenceDeleteOrphanedDependencies": {
+      "type": "boolean"
+    },
+    "preferenceDeleteSavedVariables": {
+      "type": "boolean"
+    },
+    "preferenceReleaseType": {
+      "type": "number"
+    },
+    "preferenceModdingFolderPath": {},
+    "syncProfile": {
+      "type": "object",
+      "properties": {
+        "PreferenceEnabled": {
+          "type": "boolean"
+        },
+        "PreferenceAutoSync": {
+          "type": "boolean"
+        },
+        "PreferenceAutoDelete": {
+          "type": "boolean"
+        },
+        "PreferenceBackupSavedVariables": {
+          "type": "boolean"
+        },
+        "GameInstanceGuid": {
+          "type": "string"
+        },
+        "SyncProfileID": {
+          "type": "number"
+        },
+        "SavedVariablesProfile": {},
+        "LastSyncDate": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "PreferenceEnabled",
+        "PreferenceAutoSync",
+        "PreferenceAutoDelete",
+        "PreferenceBackupSavedVariables",
+        "GameInstanceGuid",
+        "SyncProfileID",
+        "SavedVariablesProfile",
+        "LastSyncDate"
+      ]
+    },
+    "installDate": {
+      "type": "string"
+    },
+    "installedAddons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "instanceID": {
+            "type": "string"
+          },
+          "modSource": {
+            "type": "number"
+          },
+          "addonID": {
+            "type": "number"
+          },
+          "gameID": {
+            "type": "number"
+          },
+          "categoryClassID": {
+            "type": "number"
+          },
+          "categorySection": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "number"
+              },
+              "gameId": {
+                "type": "number"
+              },
+              "name": {
+                "type": "string"
+              },
+              "packageType": {
+                "type": "number"
+              },
+              "path": {
+                "type": "string"
+              },
+              "initialInclusionPattern": {
+                "type": "string"
+              },
+              "gameCategoryId": {
+                "type": "number"
+              },
+              "extraIncludePattern": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "gameId",
+              "name",
+              "packageType",
+              "path",
+              "initialInclusionPattern",
+              "gameCategoryId"
+            ]
+          },
+          "categoryIds": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "gameInstanceID": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "modFolderPath": {
+            "type": "string"
+          },
+          "fileNameOnDisk": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "number"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            }
+          },
+          "primaryAuthor": {
+            "type": "string"
+          },
+          "primaryCategoryId": {
+            "type": "number"
+          },
+          "packageType": {
+            "type": "number"
+          },
+          "webSiteURL": {
+            "type": "string"
+          },
+          "issuesURL": {
+            "type": "string"
+          },
+          "wikiURL": {
+            "type": "string"
+          },
+          "thumbnailUrl": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {}
+          },
+          "installedFile": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "number"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "fileDate": {
+                "type": "string"
+              },
+              "fileLength": {
+                "type": "number"
+              },
+              "releaseType": {
+                "type": "number"
+              },
+              "fileStatus": {
+                "type": "number"
+              },
+              "downloadUrl": {
+                "type": "string"
+              },
+              "isAlternate": {
+                "type": "boolean"
+              },
+              "alternateFileId": {
+                "type": "number"
+              },
+              "serverPackFileId": {
+                "type": "number"
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "addonId": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "addonId",
+                    "type"
+                  ]
+                }
+              },
+              "isAvailable": {
+                "type": "boolean"
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "foldername": {
+                      "type": "string"
+                    },
+                    "fingerprint": {
+                      "type": "number"
+                    },
+                    "invalidFingerprint": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "foldername",
+                    "fingerprint",
+                    "invalidFingerprint"
+                  ]
+                }
+              },
+              "packageFingerprint": {
+                "type": "number"
+              },
+              "gameVersion": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sortableGameVersion": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "gameVersion": {
+                      "type": "string"
+                    },
+                    "gameVersionName": {
+                      "type": "string"
+                    },
+                    "gameVersionTypeId": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "gameVersion",
+                    "gameVersionName",
+                    "gameVersionTypeId"
+                  ]
+                }
+              },
+              "isCompatibleWithClient": {
+                "type": "boolean"
+              },
+              "isEarlyAccessContent": {
+                "type": "boolean"
+              },
+              "restrictProjectFileAccess": {
+                "type": "number"
+              },
+              "projectStatus": {
+                "type": "number"
+              },
+              "projectId": {
+                "type": "number"
+              },
+              "fileNameOnDisk": {
+                "type": "string"
+              },
+              "hashes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "number"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "value"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "fileName",
+              "fileDate",
+              "fileLength",
+              "releaseType",
+              "fileStatus",
+              "downloadUrl",
+              "isAlternate",
+              "alternateFileId",
+              "serverPackFileId",
+              "dependencies",
+              "isAvailable",
+              "modules",
+              "packageFingerprint",
+              "gameVersion",
+              "sortableGameVersion",
+              "isCompatibleWithClient",
+              "isEarlyAccessContent",
+              "restrictProjectFileAccess",
+              "projectStatus",
+              "projectId",
+              "fileNameOnDisk",
+              "hashes"
+            ]
+          },
+          "dateInstalled": {
+            "type": "string"
+          },
+          "dateUpdated": {
+            "type": "string"
+          },
+          "status": {
+            "type": "number"
+          },
+          "installSource": {
+            "type": "number"
+          },
+          "preferenceReleaseType": {},
+          "preferenceAutoInstallUpdates": {},
+          "preferenceAlternateFile": {
+            "type": "boolean"
+          },
+          "isEnabled": {
+            "type": "boolean"
+          },
+          "isLocked": {
+            "type": "boolean"
+          },
+          "filePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preferenceIsIgnored": {
+            "type": "boolean"
+          },
+          "isModified": {
+            "type": "boolean"
+          },
+          "isWorkingCopy": {
+            "type": "boolean"
+          },
+          "isFuzzyMatch": {
+            "type": "boolean"
+          },
+          "manifestName": {},
+          "installedTargets": {
+            "type": "array",
+            "items": {}
+          },
+          "latestFile": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "number"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "fileDate": {
+                "type": "string"
+              },
+              "fileLength": {
+                "type": "number"
+              },
+              "releaseType": {
+                "type": "number"
+              },
+              "fileStatus": {
+                "type": "number"
+              },
+              "downloadUrl": {
+                "type": "string"
+              },
+              "isAlternate": {
+                "type": "boolean"
+              },
+              "alternateFileId": {
+                "type": "number"
+              },
+              "serverPackFileId": {
+                "type": "number"
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "addonId": {
+                      "type": "number"
+                    },
+                    "type": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "addonId",
+                    "type"
+                  ]
+                }
+              },
+              "isAvailable": {
+                "type": "boolean"
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "foldername": {
+                      "type": "string"
+                    },
+                    "fingerprint": {
+                      "type": "number"
+                    },
+                    "invalidFingerprint": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "foldername",
+                    "fingerprint",
+                    "invalidFingerprint"
+                  ]
+                }
+              },
+              "packageFingerprint": {
+                "type": "number"
+              },
+              "gameVersion": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sortableGameVersion": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "gameVersion": {
+                      "type": "string"
+                    },
+                    "gameVersionName": {
+                      "type": "string"
+                    },
+                    "gameVersionTypeId": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "gameVersion",
+                    "gameVersionName",
+                    "gameVersionTypeId"
+                  ]
+                }
+              },
+              "isCompatibleWithClient": {
+                "type": "boolean"
+              },
+              "isEarlyAccessContent": {
+                "type": "boolean"
+              },
+              "restrictProjectFileAccess": {
+                "type": "number"
+              },
+              "projectStatus": {
+                "type": "number"
+              },
+              "projectId": {
+                "type": "number"
+              },
+              "fileNameOnDisk": {
+                "type": "string"
+              },
+              "hashes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "number"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "value"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "fileName",
+              "fileDate",
+              "fileLength",
+              "releaseType",
+              "fileStatus",
+              "downloadUrl",
+              "isAlternate",
+              "alternateFileId",
+              "serverPackFileId",
+              "dependencies",
+              "isAvailable",
+              "modules",
+              "packageFingerprint",
+              "gameVersion",
+              "sortableGameVersion",
+              "isCompatibleWithClient",
+              "isEarlyAccessContent",
+              "restrictProjectFileAccess",
+              "projectStatus",
+              "projectId",
+              "fileNameOnDisk",
+              "hashes"
+            ]
+          },
+          "allowModDistribution": {
+            "type": "boolean"
+          },
+          "exportDisabledReason": {
+            "type": "number"
+          },
+          "groupId": {}
+        },
+        "required": [
+          "instanceID",
+          "modSource",
+          "addonID",
+          "gameID",
+          "categoryClassID",
+          "categorySection",
+          "categoryIds",
+          "gameInstanceID",
+          "name",
+          "modFolderPath",
+          "fileNameOnDisk",
+          "authors",
+          "primaryAuthor",
+          "primaryCategoryId",
+          "packageType",
+          "webSiteURL",
+          "thumbnailUrl",
+          "tags",
+          "installedFile",
+          "dateInstalled",
+          "dateUpdated",
+          "status",
+          "installSource",
+          "preferenceReleaseType",
+          "preferenceAutoInstallUpdates",
+          "preferenceAlternateFile",
+          "isEnabled",
+          "isLocked",
+          "filePaths",
+          "preferenceIsIgnored",
+          "isModified",
+          "isWorkingCopy",
+          "isFuzzyMatch",
+          "manifestName",
+          "installedTargets",
+          "latestFile",
+          "allowModDistribution",
+          "exportDisabledReason",
+          "groupId"
+        ]
+      }
+    },
+    "installedGamePrerequisites": {
+      "type": "array",
+      "items": {}
+    },
+    "wasNameManuallyChanged": {
+      "type": "boolean"
+    },
+    "wasGameVersionTypeIdManuallyChanged": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "baseModLoader",
+    "isUnlocked",
+    "javaArgsOverride",
+    "lastPlayed",
+    "playedCount",
+    "timePlayed",
+    "manifest",
+    "fileDate",
+    "installedModpack",
+    "projectID",
+    "fileID",
+    "customAuthor",
+    "modpackOverrides",
+    "isMemoryOverride",
+    "allocatedMemory",
+    "profileImagePath",
+    "groupId",
+    "isVanilla",
+    "guid",
+    "gameTypeID",
+    "installPath",
+    "name",
+    "cachedScans",
+    "isValid",
+    "lastPreviousMatchUpdate",
+    "lastRefreshAttempt",
+    "isEnabled",
+    "gameVersion",
+    "gameVersionFlavor",
+    "gameVersionTypeId",
+    "preferenceAlternateFile",
+    "preferenceAutoInstallUpdates",
+    "preferenceDeleteOrphanedDependencies",
+    "preferenceDeleteSavedVariables",
+    "preferenceReleaseType",
+    "preferenceModdingFolderPath",
+    "syncProfile",
+    "installDate",
+    "installedAddons",
+    "installedGamePrerequisites",
+    "wasNameManuallyChanged",
+    "wasGameVersionTypeIdManuallyChanged"
+  ]
+}
