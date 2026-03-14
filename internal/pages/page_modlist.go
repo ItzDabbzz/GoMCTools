@@ -1,6 +1,7 @@
 package pages
 
-//page_modlist.go
+// page_modlist.go
+
 import (
 	"fmt"
 	"strings"
@@ -14,6 +15,40 @@ import (
 	zone "github.com/lrstanley/bubblezone/v2"
 )
 
+// ─── Output format ────────────────────────────────────────────────────────────
+
+// modlistFormat controls the syntax used when generating the output string.
+type modlistFormat int
+
+const (
+	modlistFormatBullet modlistFormat = iota // markdown bullet list (default)
+	modlistFormatTable                       // GFM pipe table
+	modlistFormatBBCode                      // forum BBCode
+)
+
+// ─── Sort options ─────────────────────────────────────────────────────────────
+
+// modlistSort controls which field mods are sorted by within each section.
+type modlistSort int
+
+const (
+	modlistSortName   modlistSort = iota // alphabetical by mod name (default)
+	modlistSortSource                    // by source (Modrinth / CurseForge / unknown)
+	modlistSortSide                      // by distribution side
+)
+
+// sortFieldLabel returns a short display name for each sort field.
+func sortFieldLabel(f modlistSort) string {
+	switch f {
+	case modlistSortSource:
+		return "Source"
+	case modlistSortSide:
+		return "Side"
+	default:
+		return "Name"
+	}
+}
+
 // modlistMode controls whether mods are listed in a single section or split
 // by their distribution side (client / server / both).
 type modlistMode int
@@ -23,7 +58,9 @@ const (
 	modlistSeparated                    // separate sections by side
 )
 
-// modlistPage renders a configurable markdown mod list for the loaded pack.
+// ─── Page model ───────────────────────────────────────────────────────────────
+
+// modlistPage renders a configurable mod list for the loaded pack.
 type modlistPage struct {
 	state        *ui.SharedState
 	zone         *zone.Manager
@@ -32,12 +69,26 @@ type modlistPage struct {
 
 	keys modlistKeyMap
 
-	mode            modlistMode
+	// Layout / grouping
+	mode modlistMode
+
+	// Output format
+	outputFormat modlistFormat
+
+	// Sort
+	sortField modlistSort
+	sortAsc   bool
+
+	// Metadata column toggles
 	attachLinks     bool
 	includeSide     bool
 	includeSource   bool
 	includeVersions bool
 	includeFilename bool
+
+	// Header / view options
+	showProjectMeta bool // prepend pack author / version / description
+	rawPreview      bool // show raw output source instead of glamour-rendered
 
 	viewport   viewport.Model
 	pageWidth  int
@@ -49,22 +100,27 @@ type modlistPage struct {
 	settingsW int
 	previewW  int
 	status    string
+	// markdown holds the current raw generated output (markdown or BBCode).
 	markdown  string
 	lastWrap  int
 	renderer  *glamour.TermRenderer
 	rendererW int
 	dirty     bool
 
-	// Cached markdown and its settings hash to avoid unnecessary re-renders.
+	// Cached raw output and its settings hash to avoid unnecessary re-renders.
 	cachedMarkdown     string
 	cachedSettingsHash uint64
 }
+
+// ─── Zone wiring ──────────────────────────────────────────────────────────────
 
 // SetZone wires the page to the root bubblezone manager.
 func (m *modlistPage) SetZone(z *zone.Manager, prefix string) {
 	m.zone = z
 	m.prefix = prefix
 }
+
+// ─── Constructor ──────────────────────────────────────────────────────────────
 
 // NewModlistPage constructs a new Modlist Generator page backed by state.
 func NewModlistPage(state *ui.SharedState) ui.Page {
@@ -77,20 +133,43 @@ func NewModlistPage(state *ui.SharedState) ui.Page {
 		mode = modlistSeparated
 	}
 
+	outputFormat := modlistFormatBullet
+	switch state.Config.Modlist.OutputFormat {
+	case 1:
+		outputFormat = modlistFormatTable
+	case 2:
+		outputFormat = modlistFormatBBCode
+	}
+
+	sortField := modlistSortName
+	switch state.Config.Modlist.SortField {
+	case 1:
+		sortField = modlistSortSource
+	case 2:
+		sortField = modlistSortSide
+	}
+
 	return &modlistPage{
 		state:           state,
 		mode:            mode,
+		outputFormat:    outputFormat,
+		sortField:       sortField,
+		sortAsc:         state.Config.Modlist.SortAsc,
 		attachLinks:     state.Config.Modlist.AttachLinks,
 		includeSide:     state.Config.Modlist.IncludeSide,
 		includeSource:   state.Config.Modlist.IncludeSource,
 		includeVersions: state.Config.Modlist.IncludeVersions,
 		includeFilename: state.Config.Modlist.IncludeFilename,
+		showProjectMeta: state.Config.Modlist.ShowProjectMeta,
+		rawPreview:      state.Config.Modlist.RawPreview,
 		viewport:        vp,
 		status:          "Load a pack in Selector to generate a mod list.",
 		dirty:           true,
 		keys:            defaultModlistKeyMap(),
 	}
 }
+
+// ─── ui.Page interface ────────────────────────────────────────────────────────
 
 func (m *modlistPage) Title() string { return "Modlist Generator" }
 func (m *modlistPage) Init() tea.Cmd { return nil }
@@ -107,60 +186,97 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("Loaded %d mods", len(typed.Info.Mods))
 		m.dirty = true
+
 	case zone.MsgZoneInBounds:
 		if typed.Event.Mouse().Button == tea.MouseLeft {
 			if id := m.resolveZoneID(typed.Zone); id != "" {
 				m = m.handleClick(id)
 			}
 		}
-	// ContentSizeMsg delivers the exact inner dimensions the root model has
-	// already computed. Use these directly instead of re-deriving them from
-	// the raw WindowSizeMsg by subtracting frame overhead, which is fragile.
+
 	case ui.ContentSizeMsg:
 		m.contentW = typed.Width
 		m.contentH = typed.Height
 		m.updateLayout()
+
 	case tea.WindowSizeMsg:
-		// Keep pageWidth/pageHeight for any code that still needs raw size,
-		// but layout is now driven by ContentSizeMsg above.
 		m.pageWidth = typed.Width
 		m.pageHeight = typed.Height
+
 	case tea.MouseMsg:
 		if m.zone != nil && typed.Mouse().Button == tea.MouseLeft {
 			if id := m.resolveMouseZone(typed); id != "" {
 				m = m.handleClick(id)
 			}
 		}
+
 	case tea.KeyMsg:
-		if key.Matches(typed, m.keys.LayoutMerged) {
+		switch {
+		// Layout
+		case key.Matches(typed, m.keys.LayoutMerged):
 			m = m.setLayout(modlistMerged)
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.LayoutSplit) {
+		case key.Matches(typed, m.keys.LayoutSplit):
 			m = m.setLayout(modlistSeparated)
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.ToggleLinks) {
+
+		// Output format
+		case key.Matches(typed, m.keys.FormatBullet):
+			m = m.setFormat(modlistFormatBullet)
+			m.saveToConfig()
+		case key.Matches(typed, m.keys.FormatTable):
+			m = m.setFormat(modlistFormatTable)
+			m.saveToConfig()
+		case key.Matches(typed, m.keys.FormatBBCode):
+			m = m.setFormat(modlistFormatBBCode)
+			m.saveToConfig()
+
+		// Sort
+		case key.Matches(typed, m.keys.CycleSort):
+			m.sortField = (m.sortField + 1) % 3
+			m.dirty = true
+			m.saveToConfig()
+		case key.Matches(typed, m.keys.ToggleSortDir):
+			m.sortAsc = !m.sortAsc
+			m.dirty = true
+			m.saveToConfig()
+
+		// Metadata toggles
+		case key.Matches(typed, m.keys.ToggleLinks):
 			m.attachLinks = !m.attachLinks
 			m.dirty = true
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.ToggleSide) {
+		case key.Matches(typed, m.keys.ToggleSide):
 			m.includeSide = !m.includeSide
 			m.dirty = true
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.ToggleSource) {
+		case key.Matches(typed, m.keys.ToggleSource):
 			m.includeSource = !m.includeSource
 			m.dirty = true
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.ToggleVersions) {
+		case key.Matches(typed, m.keys.ToggleVersions):
 			m.includeVersions = !m.includeVersions
 			m.dirty = true
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.ToggleFilename) {
+		case key.Matches(typed, m.keys.ToggleFilename):
 			m.includeFilename = !m.includeFilename
 			m.dirty = true
 			m.saveToConfig()
-		} else if key.Matches(typed, m.keys.Copy) {
+
+		// View
+		case key.Matches(typed, m.keys.ToggleRaw):
+			m.rawPreview = !m.rawPreview
+			m.dirty = true // forces viewport content refresh
+			m.saveToConfig()
+		case key.Matches(typed, m.keys.ToggleProjectMeta):
+			m.showProjectMeta = !m.showProjectMeta
+			m.dirty = true
+			m.saveToConfig()
+
+		// Actions
+		case key.Matches(typed, m.keys.Copy):
 			m.status = m.copyMarkdown()
-		} else if key.Matches(typed, m.keys.Export) {
+		case key.Matches(typed, m.keys.Export):
 			m.status = m.exportToFile()
 		}
 	}
@@ -177,6 +293,8 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 	return m, tea.Batch(cmds...)
 }
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
 
 // updateLayout recomputes all dimension fields from ContentSizeMsg dimensions.
 // contentW and contentH must already be set before calling this.
@@ -226,18 +344,26 @@ func (m *modlistPage) updateLayout() {
 	}
 }
 
-// rebuild regenerates the markdown (if dirty) and updates the viewport content.
+// ─── Rebuild ─────────────────────────────────────────────────────────────────
+
+// rebuild regenerates the output (if dirty) and refreshes the viewport content.
 func (m *modlistPage) rebuild() {
 	settingsHash := m.calculateSettingsHash()
 	if m.dirty || settingsHash != m.cachedSettingsHash || m.cachedMarkdown == "" {
-		m.markdown = m.generateMarkdown()
+		m.markdown = m.generateOutput()
 		m.cachedSettingsHash = settingsHash
 		m.cachedMarkdown = m.markdown
 	} else {
 		m.markdown = m.cachedMarkdown
 	}
 
-	if m.state == nil || m.state.Pack.InstancePath == "" {
+	// Determine what goes into the viewport:
+	//   • No pack loaded         → raw placeholder text
+	//   • BBCode format          → always raw (no glamour renderer for BBCode)
+	//   • rawPreview is on       → raw source text
+	//   • otherwise              → glamour-rendered markdown
+	noPack := m.state == nil || m.state.Pack.InstancePath == ""
+	if noPack || m.rawPreview || m.outputFormat == modlistFormatBBCode {
 		m.viewport.SetContent(m.markdown)
 	} else {
 		m.viewport.SetContent(m.renderMarkdown(m.markdown))
@@ -246,8 +372,9 @@ func (m *modlistPage) rebuild() {
 	m.dirty = false
 }
 
+// ─── View ─────────────────────────────────────────────────────────────────────
+
 func (m *modlistPage) View() string {
-	// Ensure we have reasonable dimensions
 	displayW := m.contentW
 	if displayW < 40 {
 		displayW = 80
@@ -256,9 +383,8 @@ func (m *modlistPage) View() string {
 	if displayH < 10 {
 		displayH = 20
 	}
-
 	if displayW == 0 || displayH == 0 {
-		return "Modlist Generator - initializing..."
+		return "Modlist Generator — initializing..."
 	}
 
 	settingsW := m.settingsW
@@ -291,25 +417,47 @@ func (m *modlistPage) View() string {
 	return layout
 }
 
+// ─── Settings panel ───────────────────────────────────────────────────────────
+
 // renderSettings builds the left-hand settings column.
 func (m *modlistPage) renderSettings() string {
+	sortDir := "↑"
+	if !m.sortAsc {
+		sortDir = "↓"
+	}
+
 	left := []string{
 		sectionTitleStyle.Render("Layout"),
 		m.markOption("layout-merged", fmt.Sprintf("%s Merged (1)", checkbox(m.mode == modlistMerged))),
 		m.markOption("layout-split", fmt.Sprintf("%s Split by side (2)", checkbox(m.mode == modlistSeparated))),
 		"",
+		sectionTitleStyle.Render("Format"),
+		m.markOption("format-bullet", fmt.Sprintf("%s Bullet (b)", checkbox(m.outputFormat == modlistFormatBullet))),
+		m.markOption("format-table", fmt.Sprintf("%s Table (t)", checkbox(m.outputFormat == modlistFormatTable))),
+		m.markOption("format-bbcode", fmt.Sprintf("%s BBCode (x)", checkbox(m.outputFormat == modlistFormatBBCode))),
+		"",
+		sectionTitleStyle.Render("Sort"),
+		m.markOption("sort-name", fmt.Sprintf("%s By Name (s)", checkbox(m.sortField == modlistSortName))),
+		m.markOption("sort-source", fmt.Sprintf("%s By Source", checkbox(m.sortField == modlistSortSource))),
+		m.markOption("sort-side", fmt.Sprintf("%s By Side", checkbox(m.sortField == modlistSortSide))),
+		m.markOption("sort-dir", fmt.Sprintf("%s Ascending (S)", checkbox(m.sortAsc))+" "+sortDir),
+	}
+
+	right := []string{
 		sectionTitleStyle.Render("Metadata"),
 		m.markOption("meta-links", fmt.Sprintf("%s Links (a)", checkbox(m.attachLinks))),
 		m.markOption("meta-side", fmt.Sprintf("%s Side tag (i)", checkbox(m.includeSide))),
 		m.markOption("meta-source", fmt.Sprintf("%s Source (o)", checkbox(m.includeSource))),
-		m.markOption("meta-version", fmt.Sprintf("%s Game versions (v)", checkbox(m.includeVersions))),
+		m.markOption("meta-version", fmt.Sprintf("%s Versions (v)", checkbox(m.includeVersions))),
 		m.markOption("meta-filename", fmt.Sprintf("%s Filenames (f)", checkbox(m.includeFilename))),
-	}
-
-	right := []string{
+		m.markOption("view-meta", fmt.Sprintf("%s Pack info (p)", checkbox(m.showProjectMeta))),
+		"",
+		sectionTitleStyle.Render("View"),
+		m.markOption("view-raw", fmt.Sprintf("%s Raw source (r)", checkbox(m.rawPreview))),
+		"",
 		sectionTitleStyle.Render("Actions"),
 		m.markOption("action-copy", "Copy (c)"),
-		m.markOption("action-export", "Export modlist.md (e)"),
+		m.markOption("action-export", "Export (e)"),
 	}
 
 	colW := m.settingsW / 2
@@ -321,7 +469,7 @@ func (m *modlistPage) renderSettings() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
 }
 
-// --- click / zone helpers ---
+// ─── Zone / click helpers ─────────────────────────────────────────────────────
 
 func (m *modlistPage) markOption(id, content string) string {
 	if m.zone == nil {
@@ -333,7 +481,10 @@ func (m *modlistPage) markOption(id, content string) string {
 func (m *modlistPage) clickIDs() []string {
 	return []string{
 		"layout-merged", "layout-split",
+		"format-bullet", "format-table", "format-bbcode",
+		"sort-name", "sort-source", "sort-side", "sort-dir",
 		"meta-links", "meta-side", "meta-source", "meta-version", "meta-filename",
+		"view-meta", "view-raw",
 		"action-copy", "action-export",
 	}
 }
@@ -364,12 +515,44 @@ func (m *modlistPage) resolveMouseZone(msg tea.MouseMsg) string {
 
 func (m *modlistPage) handleClick(id string) *modlistPage {
 	switch strings.TrimPrefix(id, m.prefix) {
+	// Layout
 	case "layout-merged":
 		m = m.setLayout(modlistMerged)
 		m.saveToConfig()
 	case "layout-split":
 		m = m.setLayout(modlistSeparated)
 		m.saveToConfig()
+
+	// Format
+	case "format-bullet":
+		m = m.setFormat(modlistFormatBullet)
+		m.saveToConfig()
+	case "format-table":
+		m = m.setFormat(modlistFormatTable)
+		m.saveToConfig()
+	case "format-bbcode":
+		m = m.setFormat(modlistFormatBBCode)
+		m.saveToConfig()
+
+	// Sort
+	case "sort-name":
+		m.sortField = modlistSortName
+		m.dirty = true
+		m.saveToConfig()
+	case "sort-source":
+		m.sortField = modlistSortSource
+		m.dirty = true
+		m.saveToConfig()
+	case "sort-side":
+		m.sortField = modlistSortSide
+		m.dirty = true
+		m.saveToConfig()
+	case "sort-dir":
+		m.sortAsc = !m.sortAsc
+		m.dirty = true
+		m.saveToConfig()
+
+	// Metadata toggles
 	case "meta-links":
 		m.attachLinks = !m.attachLinks
 		m.dirty = true
@@ -390,6 +573,18 @@ func (m *modlistPage) handleClick(id string) *modlistPage {
 		m.includeFilename = !m.includeFilename
 		m.dirty = true
 		m.saveToConfig()
+
+	// View
+	case "view-meta":
+		m.showProjectMeta = !m.showProjectMeta
+		m.dirty = true
+		m.saveToConfig()
+	case "view-raw":
+		m.rawPreview = !m.rawPreview
+		m.dirty = true
+		m.saveToConfig()
+
+	// Actions
 	case "action-copy":
 		m.status = m.copyMarkdown()
 	case "action-export":
@@ -398,6 +593,8 @@ func (m *modlistPage) handleClick(id string) *modlistPage {
 	return m
 }
 
+// ─── Mutation helpers ─────────────────────────────────────────────────────────
+
 func (m *modlistPage) setLayout(mode modlistMode) *modlistPage {
 	if m.mode != mode {
 		m.mode = mode
@@ -405,6 +602,18 @@ func (m *modlistPage) setLayout(mode modlistMode) *modlistPage {
 	}
 	return m
 }
+
+func (m *modlistPage) setFormat(f modlistFormat) *modlistPage {
+	if m.outputFormat != f {
+		m.outputFormat = f
+		m.dirty = true
+		// Force glamour renderer recreate when switching format.
+		m.renderer = nil
+	}
+	return m
+}
+
+// ─── Config sync ─────────────────────────────────────────────────────────────
 
 // saveToConfig writes the current display settings back into the shared config.
 func (m *modlistPage) saveToConfig() {
@@ -415,12 +624,32 @@ func (m *modlistPage) saveToConfig() {
 	if m.mode == modlistSeparated {
 		modeInt = 1
 	}
+	fmtInt := 0
+	switch m.outputFormat {
+	case modlistFormatTable:
+		fmtInt = 1
+	case modlistFormatBBCode:
+		fmtInt = 2
+	}
+	sortInt := 0
+	switch m.sortField {
+	case modlistSortSource:
+		sortInt = 1
+	case modlistSortSide:
+		sortInt = 2
+	}
+
 	m.state.Config.Modlist.Mode = modeInt
+	m.state.Config.Modlist.OutputFormat = fmtInt
+	m.state.Config.Modlist.SortField = sortInt
+	m.state.Config.Modlist.SortAsc = m.sortAsc
 	m.state.Config.Modlist.AttachLinks = m.attachLinks
 	m.state.Config.Modlist.IncludeSide = m.includeSide
 	m.state.Config.Modlist.IncludeSource = m.includeSource
 	m.state.Config.Modlist.IncludeVersions = m.includeVersions
 	m.state.Config.Modlist.IncludeFilename = m.includeFilename
+	m.state.Config.Modlist.ShowProjectMeta = m.showProjectMeta
+	m.state.Config.Modlist.RawPreview = m.rawPreview
 }
 
 // detectPackChange marks the page dirty whenever a different pack is loaded.
@@ -440,14 +669,14 @@ func (m *modlistPage) estimatedSettingsWidth(total int) int {
 		total = m.contentW
 	}
 	if total == 0 {
-		return 48
+		return 52
 	}
 	w := total / 2
-	if w < 44 {
-		w = 44
+	if w < 48 {
+		w = 48
 	}
-	if w > 64 {
-		w = 64
+	if w > 72 {
+		w = 72
 	}
 	return w
 }
@@ -460,10 +689,12 @@ func checkbox(on bool) string {
 	return "[ ]"
 }
 
+// ─── Key help ─────────────────────────────────────────────────────────────────
+
 func (m *modlistPage) ShortHelp() []key.Binding  { return m.keys.ShortHelp() }
 func (m *modlistPage) FullHelp() [][]key.Binding { return m.keys.FullHelp() }
 
-// --- styles ---
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 var (
 	settingsStyle     = lipgloss.NewStyle().Padding(0, 2, 0, 0).MarginRight(3)

@@ -29,6 +29,12 @@ type Config struct {
 		IncludeSource   bool `toml:"include_source"`    // Include source (Modrinth/CurseForge)
 		IncludeVersions bool `toml:"include_versions"`  // Include game versions
 		IncludeFilename bool `toml:"include_filenames"` // Include filenames
+		// New options
+		OutputFormat    int  `toml:"output_format"`     // 0 = bullet, 1 = table (GFM), 2 = BBCode
+		SortField       int  `toml:"sort_field"`        // 0 = name, 1 = source, 2 = side
+		SortAsc         bool `toml:"sort_asc"`          // true = ascending
+		ShowProjectMeta bool `toml:"show_project_meta"` // include pack author/version/description
+		RawPreview      bool `toml:"raw_preview"`       // show raw source instead of rendered output
 	} `toml:"modlist"`
 
 	// Pack Cleaner page settings
@@ -60,6 +66,11 @@ func DefaultConfig() Config {
 			IncludeSource   bool `toml:"include_source"`
 			IncludeVersions bool `toml:"include_versions"`
 			IncludeFilename bool `toml:"include_filenames"`
+			OutputFormat    int  `toml:"output_format"`
+			SortField       int  `toml:"sort_field"`
+			SortAsc         bool `toml:"sort_asc"`
+			ShowProjectMeta bool `toml:"show_project_meta"`
+			RawPreview      bool `toml:"raw_preview"`
 		}{
 			Mode:            0, // merged
 			AttachLinks:     true,
@@ -67,6 +78,11 @@ func DefaultConfig() Config {
 			IncludeSource:   true,
 			IncludeVersions: false,
 			IncludeFilename: false,
+			OutputFormat:    0,    // bullet
+			SortField:       0,    // by name
+			SortAsc:         true, // ascending
+			ShowProjectMeta: false,
+			RawPreview:      false,
 		},
 		Cleaner: struct {
 			CustomPresets []CleanerPreset `toml:"custom_presets"`
