@@ -11,10 +11,11 @@ import (
 )
 
 type settingsPage struct {
-	state    *ui.SharedState
-	autoLoad bool
-	width    int
-	height   int
+	state       *ui.SharedState
+	autoLoad    bool
+	width       int
+	height      int
+	showConfirm bool
 }
 
 func NewSettingsPage(state *ui.SharedState) ui.Page {
@@ -27,6 +28,11 @@ func NewSettingsPage(state *ui.SharedState) ui.Page {
 func (s *settingsPage) Title() string { return "Settings" }
 func (s *settingsPage) Init() tea.Cmd { return nil }
 
+// CaptureGlobalNav blocks tab navigation when the confirmation modal is visible.
+func (s *settingsPage) CaptureGlobalNav() bool {
+	return s.showConfirm
+}
+
 func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	// ContentSizeMsg carries exact inner dimensions; raw WindowSizeMsg
@@ -35,25 +41,53 @@ func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		s.width = msg.Width
 		s.height = msg.Height
 	case tea.KeyMsg:
+		if s.showConfirm {
+			switch msg.String() {
+			case "y", "Y", "enter":
+				s.resetToDefaults()
+				s.showConfirm = false
+			case "n", "N", "esc":
+				s.showConfirm = false
+			}
+			return s, nil
+		}
+
 		switch {
 		case key.Matches(msg, settingsKeys.ToggleAutoLoad):
 			s.autoLoad = !s.autoLoad
+			s.state.Config.AutoLoadPreviousState = s.autoLoad
 		case key.Matches(msg, settingsKeys.ResetDefaults):
-			s.autoLoad = true
-			s.state.Config.Modlist.Mode = 0
-			s.state.Config.Modlist.AttachLinks = true
-			s.state.Config.Modlist.IncludeSide = true
-			s.state.Config.Modlist.IncludeSource = true
-			s.state.Config.Modlist.IncludeVersions = false
-			s.state.Config.Modlist.IncludeFilename = false
+			s.showConfirm = true
 		}
-		// Sync config after any key.
-		s.state.Config.AutoLoadPreviousState = s.autoLoad
 	}
 	return s, nil
 }
 
+func (s *settingsPage) resetToDefaults() {
+	s.autoLoad = true
+	s.state.Config.AutoLoadPreviousState = true
+	s.state.Config.Modlist.Mode = 0
+	s.state.Config.Modlist.AttachLinks = true
+	s.state.Config.Modlist.IncludeSide = true
+	s.state.Config.Modlist.IncludeSource = true
+	s.state.Config.Modlist.IncludeVersions = false
+	s.state.Config.Modlist.IncludeFilename = false
+	s.state.Config.Modlist.OutputFormat = 0
+	s.state.Config.Modlist.SortField = 0
+	s.state.Config.Modlist.SortAsc = true
+	s.state.Config.Modlist.ShowProjectMeta = false
+	s.state.Config.Modlist.RawPreview = false
+}
+
 func (s *settingsPage) View() string {
+	if s.showConfirm {
+		modal := ui.WarningBoxStyle.Render(
+			"Are you sure you want to reset all settings?\n\n" +
+				"[ y ] Yes, reset  [ n ] Cancel",
+		)
+		return lipgloss.Place(s.width, s.height, lipgloss.Center, lipgloss.Center, modal)
+	}
+
 	title := sectionTitleStyle.Render("Settings")
 
 	toggle := func(on bool) string {
@@ -63,26 +97,33 @@ func (s *settingsPage) View() string {
 		return settingsOffStyle.Render("off")
 	}
 
-	row := func(b key.Binding, v string, desc string) string {
-		keyHint := settingsKeyStyle.Render(b.Help().Key)
-		status := toggle(v == "on")
-		return lipgloss.JoinHorizontal(lipgloss.Top,
-			keyHint, "  ", status, "  ", settingsDescStyle.Render(desc),
+	row := func(b key.Binding, on bool, desc string) string {
+		keyHint := settingsKeyStyle.UnsetWidth().Render("[ " + b.Help().Key + " ]")
+		status := toggle(on)
+
+		return lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			keyHint, "  ",
+			status, "  ",
+			settingsDescStyle.Render(desc),
 		)
 	}
 
-	autoRow := row(settingsKeys.ToggleAutoLoad, toggle(s.autoLoad), "Auto-load previous pack on startup")
+	autoRow := row(settingsKeys.ToggleAutoLoad, s.autoLoad, "Auto-load previous pack on startup")
 
+	resetKey := "[ " + settingsKeys.ResetDefaults.Help().Key + " ]"
 	resetHint := lipgloss.JoinHorizontal(lipgloss.Top,
-		settingsKeyStyle.Render(settingsKeys.ResetDefaults.Help().Key),
+		settingsKeyStyle.UnsetWidth().Render(resetKey),
 		"  ",
-		settingsDescStyle.Render("Reset all settings to defaults"),
+		resetWarning.Render("Reset all settings to defaults"),
 	)
 
 	note := dimStyle.Render("Settings are saved automatically on exit.")
 
 	lines := []string{title, "", autoRow, "", resetHint, "", note}
-	return strings.Join(lines, "\n")
+	content := strings.Join(lines, "\n")
+
+	return lipgloss.Place(s.width, s.height, lipgloss.Center, lipgloss.Center, content)
 }
 
 // settingsKeyMap holds all bindings for the Settings page.
@@ -117,7 +158,8 @@ func (s *settingsPage) FullHelp() [][]key.Binding { return settingsKeys.FullHelp
 
 var (
 	settingsKeyStyle = lipgloss.NewStyle().
-				Foreground(ui.HighlightColor).
+				Underline(true).
+				Foreground(lipgloss.Color("#888888")).
 				Bold(true).
 				Width(3)
 
@@ -129,5 +171,11 @@ var (
 			Bold(true)
 
 	settingsOffStyle = lipgloss.NewStyle().
-				Foreground(ui.HighlightColor)
+				Foreground(lipgloss.Red).
+				Bold(true)
+
+	resetWarning = lipgloss.NewStyle().
+			Foreground(lipgloss.BrightRed).
+			Background(lipgloss.Black).
+			Bold(true)
 )

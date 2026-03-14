@@ -49,6 +49,7 @@ var (
 	WindowStyle     = windowStyle
 	InputBoxStyle   = inputBoxStyle
 	BorderFillStyle = borderFillStyle
+	WarningBoxStyle = warningBoxStyle
 )
 
 // renderTabs builds the horizontal tab bar, marking each tab with a bubblezone
