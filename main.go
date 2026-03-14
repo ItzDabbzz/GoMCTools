@@ -24,7 +24,7 @@ func main() {
 	logger.Info("Loading Config From Disk")
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("Warning: could not load config: %v\n", err)
+		logger.Error("Warning: could not load config", "error", err)
 		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
 	}
 
@@ -52,14 +52,14 @@ func main() {
 	program := tea.NewProgram(model)
 	logger.Info("Application Loaded")
 	if _, err := program.Run(); err != nil {
-		logger.Error("Error running program:", err)
+		logger.Error("Error running program", "error", err)
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
 
 	// Persist config on clean exit.
 	if err := config.Save(*state.Config); err != nil {
-		logger.Error("Error saving config:", err)
+		logger.Error("Error saving config", "error", err)
 		fmt.Fprintf(os.Stderr, "Warning: could not save config: %v\n", err)
 	}
 }
