@@ -245,7 +245,7 @@ func isCFManifestFile(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var probe struct {
 		ManifestType string `json:"manifestType"`

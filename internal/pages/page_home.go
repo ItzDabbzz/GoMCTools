@@ -17,7 +17,7 @@ var homeLogo = []string{
 	"`Y88P' `Y8P' 8     8 `Y88P   8   `Y8P' `Y8P' 8 Y88P ",
 }
 
-var homeSubtitle = "Prism Launcher modpack tools"
+var homeSubtitle = "CurseForge & Prism Launcher Minecraft modpack tools"
 
 type homePage struct {
 	width  int
@@ -25,13 +25,13 @@ type homePage struct {
 }
 
 func NewHomePage() ui.Page {
-	return homePage{}
+	return &homePage{}
 }
 
-func (h homePage) Title() string { return "Home" }
-func (h homePage) Init() tea.Cmd { return nil }
+func (h *homePage) Title() string { return "Home" }
+func (h *homePage) Init() tea.Cmd { return nil }
 
-func (h homePage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
+func (h *homePage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch msg := msg.(type) {
 	// ContentSizeMsg carries the exact inner dimensions already stripped of
 	// the tab bar, footer, window border, and padding — use these instead of
@@ -48,7 +48,7 @@ func (h homePage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	return h, nil
 }
 
-func (h homePage) View() string {
+func (h *homePage) View() string {
 	logo := strings.Join(homeLogo, "\n")
 
 	// Ensure we have reasonable dimensions for display
@@ -116,5 +116,5 @@ var homeKeys = homeKeyMap{
 	),
 }
 
-func (h homePage) ShortHelp() []key.Binding  { return homeKeys.ShortHelp() }
-func (h homePage) FullHelp() [][]key.Binding { return homeKeys.FullHelp() }
+func (h *homePage) ShortHelp() []key.Binding  { return homeKeys.ShortHelp() }
+func (h *homePage) FullHelp() [][]key.Binding { return homeKeys.FullHelp() }

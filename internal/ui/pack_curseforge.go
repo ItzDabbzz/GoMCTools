@@ -232,7 +232,7 @@ func streamCFInstance(path string) (cfInstanceData, error) {
 	if err != nil {
 		return cfInstanceData{}, fmt.Errorf("open: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var result cfInstanceData
 	dec := json.NewDecoder(f)

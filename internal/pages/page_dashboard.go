@@ -206,9 +206,6 @@ var (
 			Bold(true).
 			Foreground(ui.HighlightColor)
 
-	dashVersionStyle = lipgloss.NewStyle().
-				Foreground(ui.HighlightColor)
-
 	dashSubtitleStyle = lipgloss.NewStyle().
 				Foreground(ui.HighlightColor).
 				Italic(true)

@@ -763,7 +763,6 @@ func (m *modlistPage) FullHelp() [][]key.Binding { return m.keys.FullHelp() }
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 var (
-	settingsStyle     = lipgloss.NewStyle().Padding(0, 2, 0, 0).MarginRight(3)
 	sectionTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(ui.HighlightColor)
 	statusStyle       = lipgloss.NewStyle().Foreground(ui.HighlightColor)
 )
