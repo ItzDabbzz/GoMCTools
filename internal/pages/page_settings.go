@@ -7,18 +7,19 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
 type settingsPage struct {
-	state       *ui.SharedState
+	state       *modpack.SharedState
 	autoLoad    bool
 	width       int
 	height      int
 	showConfirm bool
 }
 
-func NewSettingsPage(state *ui.SharedState) ui.Page {
+func NewSettingsPage(state *modpack.SharedState) ui.Page {
 	return &settingsPage{
 		state:    state,
 		autoLoad: state.Config.AutoLoadPreviousState,

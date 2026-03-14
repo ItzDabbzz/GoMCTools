@@ -17,8 +17,9 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	zone "github.com/lrstanley/bubblezone/v2"
 	"github.com/ItzDabbzz/GoMCTools/internal/logger"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // Model is the root application state, managing multiple Page instances
@@ -33,7 +34,7 @@ type Model struct {
 	contentHeight int // inner height available to pages (inside window frame)
 	zone          *zone.Manager
 	zonePrefix    string
-	state         *SharedState
+	state         *modpack.SharedState
 	pageZones     map[int]string
 	help          help.Model
 	keys          GlobalKeyMap
@@ -49,9 +50,9 @@ const (
 // NewModel initializes a Model ready for tea.NewProgram.
 // It sets up the zone manager, default keys, and help model.
 // If state is nil, a new default SharedState is created.
-func NewModel(state *SharedState, pages []Page) Model {
+func NewModel(state *modpack.SharedState, pages []Page) Model {
 	if state == nil {
-		state = &SharedState{}
+		state = &modpack.SharedState{}
 	}
 	if len(pages) == 0 {
 		pages = []Page{}
@@ -153,12 +154,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.help.SetWidth(msg.Width)
 		m.contentWidth, m.contentHeight = m.computeContentSize()
-	case PackLoadedMsg:
+	case modpack.PackLoadedMsg:
 		if m.state != nil {
 			if msg.Err != nil {
 				logger.Error("Failed to load pack: %v", msg.Err)
 				m.state.LastLoadError = msg.Err.Error()
-				m.state.Pack = PackInfo{}
+				m.state.Pack = modpack.PackInfo{}
 			} else {
 				m.state.Pack = msg.Info
 				m.state.LastLoadError = ""

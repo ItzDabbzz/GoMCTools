@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 	zone "github.com/lrstanley/bubblezone/v2"
 )
@@ -50,7 +51,7 @@ const (
 
 // modlistPage renders a configurable mod list for the loaded pack.
 type modlistPage struct {
-	state        *ui.SharedState
+	state        *modpack.SharedState
 	zone         *zone.Manager
 	prefix       string
 	lastPackPath string
@@ -111,7 +112,7 @@ func (m *modlistPage) SetZone(z *zone.Manager, prefix string) {
 // ─── Constructor ──────────────────────────────────────────────────────────────
 
 // NewModlistPage constructs a new Modlist Generator page backed by state.
-func NewModlistPage(state *ui.SharedState) ui.Page {
+func NewModlistPage(state *modpack.SharedState) ui.Page {
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	vp.MouseWheelDelta = 2
 	vp.MouseWheelEnabled = true
@@ -167,7 +168,7 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch typed := msg.(type) {
-	case ui.PackLoadedMsg:
+	case modpack.PackLoadedMsg:
 		if typed.Err != nil {
 			m.status = fmt.Sprintf("Load failed: %v", typed.Err)
 			return m, nil

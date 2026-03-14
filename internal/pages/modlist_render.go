@@ -11,7 +11,7 @@ import (
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/ItzDabbzz/GoMCTools/internal/logger"
-	"github.com/ItzDabbzz/GoMCTools/internal/ui"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	"github.com/atotto/clipboard"
 )
 
@@ -36,7 +36,7 @@ func (m *modlistPage) generateOutput() string {
 
 // writePackHeader writes the pack name, optional project metadata block,
 // and the Minecraft / loader line into b.  Used by both markdown generators.
-func (m *modlistPage) writePackHeader(b *strings.Builder, pack ui.PackInfo) {
+func (m *modlistPage) writePackHeader(b *strings.Builder, pack modpack.PackInfo) {
 	name := pack.InstanceName
 	if name == "" {
 		name = "Modlist"
@@ -83,7 +83,7 @@ func (m *modlistPage) generateMarkdownBullet() string {
 	b := strings.Builder{}
 	m.writePackHeader(&b, pack)
 
-	mods := append([]ui.IndexedMod(nil), pack.Mods...)
+	mods := append([]modpack.IndexedMod(nil), pack.Mods...)
 	if len(mods) == 0 {
 		b.WriteString("_No mods found in this pack._")
 		return b.String()
@@ -104,7 +104,7 @@ func (m *modlistPage) generateMarkdownBullet() string {
 }
 
 // writeBulletSection appends a titled bullet-list section to b.
-func writeBulletSection(b *strings.Builder, title string, mods []ui.IndexedMod, page *modlistPage) {
+func writeBulletSection(b *strings.Builder, title string, mods []modpack.IndexedMod, page *modlistPage) {
 	if len(mods) == 0 {
 		return
 	}
@@ -119,7 +119,7 @@ func writeBulletSection(b *strings.Builder, title string, mods []ui.IndexedMod, 
 
 // formatModBullet renders one mod as a markdown bullet item with optional
 // metadata sub-bullets.
-func (m *modlistPage) formatModBullet(mod ui.IndexedMod) string {
+func (m *modlistPage) formatModBullet(mod modpack.IndexedMod) string {
 	name := modDisplayName(mod)
 
 	if m.attachLinks {
@@ -162,7 +162,7 @@ func (m *modlistPage) generateMarkdownTable() string {
 	b := strings.Builder{}
 	m.writePackHeader(&b, pack)
 
-	mods := append([]ui.IndexedMod(nil), pack.Mods...)
+	mods := append([]modpack.IndexedMod(nil), pack.Mods...)
 	if len(mods) == 0 {
 		b.WriteString("_No mods found in this pack._")
 		return b.String()
@@ -183,7 +183,7 @@ func (m *modlistPage) generateMarkdownTable() string {
 }
 
 // writeTableSection appends a titled GFM table section to b.
-func (m *modlistPage) writeTableSection(b *strings.Builder, title string, mods []ui.IndexedMod) {
+func (m *modlistPage) writeTableSection(b *strings.Builder, title string, mods []modpack.IndexedMod) {
 	if len(mods) == 0 {
 		return
 	}
@@ -219,7 +219,7 @@ func (m *modlistPage) writeTableSection(b *strings.Builder, title string, mods [
 }
 
 // formatModTableRow renders one mod as a GFM table row.
-func (m *modlistPage) formatModTableRow(mod ui.IndexedMod) string {
+func (m *modlistPage) formatModTableRow(mod modpack.IndexedMod) string {
 	name := modDisplayName(mod)
 	// Escape pipes so they don't break the table.
 	name = strings.ReplaceAll(name, "|", "\\|")
@@ -298,7 +298,7 @@ func (m *modlistPage) generateBBCode() string {
 	}
 	b.WriteString("\n")
 
-	mods := append([]ui.IndexedMod(nil), pack.Mods...)
+	mods := append([]modpack.IndexedMod(nil), pack.Mods...)
 	if len(mods) == 0 {
 		b.WriteString("No mods found in this pack.")
 		return b.String()
@@ -319,7 +319,7 @@ func (m *modlistPage) generateBBCode() string {
 }
 
 // writeBBCodeSection appends a titled BBCode list section to b.
-func (m *modlistPage) writeBBCodeSection(b *strings.Builder, title string, mods []ui.IndexedMod) {
+func (m *modlistPage) writeBBCodeSection(b *strings.Builder, title string, mods []modpack.IndexedMod) {
 	if len(mods) == 0 {
 		return
 	}
@@ -332,7 +332,7 @@ func (m *modlistPage) writeBBCodeSection(b *strings.Builder, title string, mods 
 }
 
 // formatModBBCode renders one mod as a BBCode list item.
-func (m *modlistPage) formatModBBCode(mod ui.IndexedMod) string {
+func (m *modlistPage) formatModBBCode(mod modpack.IndexedMod) string {
 	name := modDisplayName(mod)
 
 	if m.attachLinks {
@@ -369,7 +369,7 @@ func (m *modlistPage) formatModBBCode(mod ui.IndexedMod) string {
 // ─── Sort helper ──────────────────────────────────────────────────────────────
 
 // sortMods sorts mods in-place by field, falling back to name for equal values.
-func sortMods(mods []ui.IndexedMod, field modlistSort, asc bool) {
+func sortMods(mods []modpack.IndexedMod, field modlistSort, asc bool) {
 	sort.SliceStable(mods, func(i, j int) bool {
 		var less bool
 		switch field {
@@ -400,7 +400,7 @@ func sortMods(mods []ui.IndexedMod, field modlistSort, asc bool) {
 // ─── Shared mod helpers ───────────────────────────────────────────────────────
 
 // modDisplayName returns the best available human-readable name for a mod.
-func modDisplayName(mod ui.IndexedMod) string {
+func modDisplayName(mod modpack.IndexedMod) string {
 	if mod.Name != "" {
 		return mod.Name
 	}
@@ -411,13 +411,13 @@ func modDisplayName(mod ui.IndexedMod) string {
 }
 
 // modLink returns the canonical URL for a mod, or "" if none is available.
-func modLink(mod ui.IndexedMod) string {
+func modLink(mod modpack.IndexedMod) string {
 	switch mod.Source {
-	case ui.SourceModrinth:
+	case modpack.SourceModrinth:
 		if mod.ModrinthID != "" {
 			return fmt.Sprintf("https://modrinth.com/mod/%s", mod.ModrinthID)
 		}
-	case ui.SourceCurseforge:
+	case modpack.SourceCurseforge:
 		if mod.CurseProject != 0 {
 			return fmt.Sprintf("http://curseforge.com/projects/%d", mod.CurseProject)
 		}
@@ -426,7 +426,7 @@ func modLink(mod ui.IndexedMod) string {
 }
 
 // splitBySide partitions mods into client-only, server-only, and both/unspecified.
-func splitBySide(mods []ui.IndexedMod) (client, server, both []ui.IndexedMod) {
+func splitBySide(mods []modpack.IndexedMod) (client, server, both []modpack.IndexedMod) {
 	for _, mod := range mods {
 		side := strings.ToLower(mod.Side)
 		switch {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ItzDabbzz/GoMCTools/internal/config"
 	"github.com/ItzDabbzz/GoMCTools/internal/logger"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	page "github.com/ItzDabbzz/GoMCTools/internal/pages"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
@@ -28,7 +29,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
 	}
 
-	state := ui.NewSharedState()
+	state := modpack.NewSharedState()
 	state.Config = &cfg
 	logger.Info("State Loaded")
 

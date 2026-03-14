@@ -12,8 +12,9 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/logger"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
@@ -40,7 +41,7 @@ var (
 type selectorPage struct {
 	selectedPath string
 	status       string
-	state        *ui.SharedState
+	state        *modpack.SharedState
 
 	fp       filepicker.Model
 	input    textinput.Model
@@ -57,7 +58,7 @@ type selectorPage struct {
 
 // ─── Constructor ──────────────────────────────────────────────────────────────
 
-func NewSelectorPage(state *ui.SharedState) ui.Page {
+func NewSelectorPage(state *modpack.SharedState) ui.Page {
 	fp := filepicker.New()
 	fp.DirAllowed = true
 	fp.FileAllowed = false
@@ -117,7 +118,7 @@ func (s *selectorPage) Init() tea.Cmd {
 		abs, err := filepath.Abs(s.selectedPath)
 		if err == nil {
 			if info, err := os.Stat(abs); err == nil && info.IsDir() {
-				cmds = append(cmds, ui.LoadPackCmd(abs))
+				cmds = append(cmds, modpack.LoadPackCmd(abs))
 				s.status = "Auto-loading last pack…"
 				s.spinning = true
 			}
@@ -145,7 +146,7 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 					s.status = fmt.Sprintf("Loading pack from %s…", filepath.Base(abs))
 					s.spinning = true
 					s.state.Config.Selector.LastPath = abs
-					cmds = append(cmds, func() tea.Msg { return s.spin.Tick() }, ui.LoadPackCmd(abs))
+					cmds = append(cmds, func() tea.Msg { return s.spin.Tick() }, modpack.LoadPackCmd(abs))
 					return s, tea.Batch(cmds...)
 				}
 			}
@@ -179,7 +180,7 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 				s.input.SetValue("")
 				s.spinning = true
 				s.state.Config.Selector.LastPath = abs
-				cmds = append(cmds, s.fp.Init(), func() tea.Msg { return s.spin.Tick() }, ui.LoadPackCmd(abs))
+				cmds = append(cmds, s.fp.Init(), func() tea.Msg { return s.spin.Tick() }, modpack.LoadPackCmd(abs))
 				return s, tea.Batch(cmds...)
 			}
 		}
@@ -229,7 +230,7 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 	switch typed := msg.(type) {
 
-	case ui.PackLoadedMsg:
+	case modpack.PackLoadedMsg:
 		s.spinning = false
 		if typed.Err != nil {
 			s.status = fmt.Sprintf("Failed to load pack: %v", typed.Err)

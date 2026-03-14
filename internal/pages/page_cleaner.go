@@ -17,6 +17,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/ItzDabbzz/GoMCTools/internal/config"
 	"github.com/ItzDabbzz/GoMCTools/internal/logger"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 	zone "github.com/lrstanley/bubblezone/v2"
 )
@@ -33,7 +34,7 @@ const (
 // cleanerPage is the Pack Cleaner page that lets users selectively delete
 // generated or unwanted files from a loaded Prism Launcher instance.
 type cleanerPage struct {
-	state     *ui.SharedState
+	state     *modpack.SharedState
 	zone      *zone.Manager
 	prefix    string
 	presets   []cleanerPreset
@@ -70,7 +71,7 @@ type cleanerPage struct {
 }
 
 // NewCleanerPage constructs a new Pack Cleaner page backed by state.
-func NewCleanerPage(state *ui.SharedState) ui.Page {
+func NewCleanerPage(state *modpack.SharedState) ui.Page {
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Preset name"
 	nameInput.CharLimit = 64
@@ -135,7 +136,7 @@ func (c *cleanerPage) CaptureGlobalNav() bool {
 
 func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch m := msg.(type) {
-	case ui.PackLoadedMsg:
+	case modpack.PackLoadedMsg:
 		if m.Err != nil {
 			logger.Error("Cleaner: failed to load pack metadata: %v", m.Err)
 			c.status = fmt.Sprintf("Load failed: %v", m.Err)

@@ -8,17 +8,18 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
 	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
 type dashboardPage struct {
-	state  *ui.SharedState
+	state  *modpack.SharedState
 	width  int
 	height int
 	ready  bool
 }
 
-func NewDashboardPage(state *ui.SharedState) ui.Page {
+func NewDashboardPage(state *modpack.SharedState) ui.Page {
 	return &dashboardPage{state: state}
 }
 
@@ -31,7 +32,7 @@ func (d *dashboardPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		d.width = msg.Width
 		d.height = msg.Height
 		d.ready = true
-	case ui.PackLoadedMsg:
+	case modpack.PackLoadedMsg:
 		// No action needed, will re-render on next View() call
 	}
 	return d, nil
@@ -81,7 +82,7 @@ func (d *dashboardPage) buildContent() string {
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 
-func (d *dashboardPage) renderHeader(pack ui.PackInfo, width int) string {
+func (d *dashboardPage) renderHeader(pack modpack.PackInfo, width int) string {
 	name := pack.InstanceName
 	if name == "" {
 		name = "Unknown Pack"
@@ -108,7 +109,7 @@ func (d *dashboardPage) renderHeader(pack ui.PackInfo, width int) string {
 
 // ─── Details card ─────────────────────────────────────────────────────────────
 
-func (d *dashboardPage) detailsCard(pack ui.PackInfo, cardWidth int) string {
+func (d *dashboardPage) detailsCard(pack modpack.PackInfo, cardWidth int) string {
 	rows := []string{
 		dashCardTitleStyle.Render("Pack Details"),
 		"",
@@ -131,7 +132,7 @@ func (d *dashboardPage) detailsCard(pack ui.PackInfo, cardWidth int) string {
 
 // ─── Mods card ────────────────────────────────────────────────────────────────
 
-func (d *dashboardPage) modsCard(pack ui.PackInfo, cardWidth int) string {
+func (d *dashboardPage) modsCard(pack modpack.PackInfo, cardWidth int) string {
 	c := pack.Counts
 	rows := []string{
 		dashCardTitleStyle.Render("Mods"),
@@ -161,7 +162,7 @@ func (d *dashboardPage) modsCard(pack ui.PackInfo, cardWidth int) string {
 
 // ─── Source bar ───────────────────────────────────────────────────────────────
 
-func (d *dashboardPage) sourceBar(c ui.ModCounts, cardWidth int) string {
+func (d *dashboardPage) sourceBar(c modpack.ModCounts, cardWidth int) string {
 	if c.Total == 0 {
 		return ""
 	}
@@ -179,11 +180,11 @@ func (d *dashboardPage) sourceBar(c ui.ModCounts, cardWidth int) string {
 
 // ─── Source badge ─────────────────────────────────────────────────────────────
 
-func (d *dashboardPage) sourceBadge(src ui.PackSourceType) string {
+func (d *dashboardPage) sourceBadge(src modpack.PackSourceType) string {
 	switch src {
-	case ui.PackSourceCurseForge:
+	case modpack.PackSourceCurseForge:
 		return curseBadgeStyle.Render("CurseForge")
-	case ui.PackSourcePrism:
+	case modpack.PackSourcePrism:
 		return prismBadgeStyle.Render("Prism")
 	default:
 		return dimStyle.Render("Unknown")
