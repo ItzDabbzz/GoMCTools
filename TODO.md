@@ -2,6 +2,7 @@
 
 # IMPORTANT FIXES NEEDED
 
+- [ ] Finish auto-load settings in modlist
 - [ ] Error Handling app wide
 - [ ] In pack cleaner, setup a way to clean out the maps folder in `/config/bluemap/maps/` to prevent errors
 
@@ -25,10 +26,9 @@
    - Git logs
 - Modlist Generator
    - [x] General Base Concept
-   - [ ] Table layout using gfm
+   - [x] Table layout using gfm
 - Pack Cleaner
    - [x] General Base Concept
-   - [ ] 
 - Settings
    - [x] General Base Concept
    - [x] Telementry Control
