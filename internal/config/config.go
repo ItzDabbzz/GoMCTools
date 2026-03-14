@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -112,12 +113,15 @@ func GetConfigPath() (string, error) {
 // If the file does not exist, DefaultConfig is returned without error.
 func Load() (Config, error) {
 	path, err := GetConfigPath()
+	logger.Debug("Got Config Path: ", path)
 	if err != nil {
+		logger.Error("Error Getting Config Path: ", err)
 		return DefaultConfig(), err
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
+		logger.Error("Error Loading Config: ", err)
 		if errors.Is(err, os.ErrNotExist) {
 			return DefaultConfig(), nil
 		}
@@ -126,6 +130,7 @@ func Load() (Config, error) {
 
 	var cfg Config
 	if err := toml.Unmarshal(data, &cfg); err != nil {
+		logger.Error("Error Parsing Config: ", err)
 		return DefaultConfig(), fmt.Errorf("parse config: %w", err)
 	}
 
@@ -141,6 +146,7 @@ func Save(cfg Config) error {
 
 	data, err := toml.Marshal(cfg)
 	if err != nil {
+		logger.Error("Error Saving Config: ", err)
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
@@ -150,5 +156,6 @@ func Save(cfg Config) error {
 // Reset writes DefaultConfig to disk, discarding any previous settings.
 func Reset() error {
 	cfg := DefaultConfig()
+	logger.Info("Force Config Reset!!")
 	return Save(cfg)
 }

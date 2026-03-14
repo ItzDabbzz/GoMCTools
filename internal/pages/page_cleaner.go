@@ -278,7 +278,7 @@ func (c *cleanerPage) View() string {
 	}
 
 	if c.debugMode {
-		debugInfo := fmt.Sprintf("DEBUG: %dx%d | W:%d H:%d", c.pageWidth, c.pageHeight, contentWidth, c.list.Height)
+		debugInfo := fmt.Sprintf("DEBUG: %dx%d | W:%d H:%d", c.pageWidth, c.pageHeight, contentWidth, c.list.Height())
 		debugLine := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render(debugInfo)
 		body = debugLine + "\n" + body
 	}
@@ -615,19 +615,6 @@ func (c *cleanerPage) viewDetail(width int) string {
 
 // --- layout helpers ---
 
-func (c *cleanerPage) availableContentWidth() int {
-	width := c.pageWidth
-	if width == 0 {
-		return cleanerColWidth*2 + cleanerColStyle.GetHorizontalFrameSize() + 4
-	}
-	inner := width - ui.DocStyle.GetHorizontalFrameSize()
-	content := inner - ui.WindowStyle.GetHorizontalFrameSize()
-	if content < 40 {
-		content = 40
-	}
-	return content
-}
-
 func (c *cleanerPage) setHelpWidth(total int) {
 	usable := total - cleanerColStyle.GetHorizontalFrameSize()
 	if usable < 16 {
@@ -669,14 +656,6 @@ func (c *cleanerPage) progressPercent(index, totalPresets int) float64 {
 
 func (c cleanerPage) ShortHelp() []key.Binding  { return c.keys.ShortHelp() }
 func (c cleanerPage) FullHelp() [][]key.Binding { return c.keys.FullHelp() }
-
-// wrapToWidth clips or wraps s to the given terminal column width.
-func wrapToWidth(s string, width int) string {
-	if width <= 0 {
-		return s
-	}
-	return lipgloss.NewStyle().MaxWidth(width).Width(width).Render(s)
-}
 
 // --- message types ---
 
