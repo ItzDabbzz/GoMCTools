@@ -1,4 +1,4 @@
-package ui
+package modpack
 
 // pack_curseforge.go — CurseForge instance loading.
 //

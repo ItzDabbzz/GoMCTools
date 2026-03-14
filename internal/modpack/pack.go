@@ -1,4 +1,4 @@
-package ui
+package modpack
 
 import (
 	"encoding/json"
