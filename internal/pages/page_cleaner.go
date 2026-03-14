@@ -1,5 +1,6 @@
 package pages
 
+//page.cleaner.go
 import (
 	"fmt"
 	"path/filepath"
@@ -7,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
-	"itzdabbzz.me/gomctools/internal/config"
-	"itzdabbzz.me/gomctools/internal/ui"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/config"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // cleanerInputMode describes whether the user is currently editing a preset.
@@ -79,10 +80,10 @@ func NewCleanerPage(state *ui.SharedState) ui.Page {
 	pathInput.CharLimit = 256
 	pathInput.Prompt = ""
 
-	pr := progress.New(progress.WithSolidFill(ui.HighlightColor.Light))
-	pr.Width = 32
+	pr := progress.New(progress.WithColors(ui.HighlightColor.Light))
+	pr.SetWidth(32)
 
-	list := viewport.New(cleanerColWidth, cleanerColHeight)
+	list := viewport.New(viewport.WithWidth(cleanerColWidth), viewport.WithHeight(cleanerColHeight))
 	list.MouseWheelEnabled = true
 	list.MouseWheelDelta = 2
 
@@ -205,8 +206,8 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 
 		if isHorizontal {
-			c.list.Width = cleanerListWidth()
-			c.list.Height = listHeight
+			c.list.SetWidth(cleanerListWidth())
+			c.list.SetHeight(listHeight)
 			rightWidth := m.Width - cleanerColWidth - cleanerGapWidth
 			if rightWidth < 32 {
 				rightWidth = 32
@@ -218,8 +219,8 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			if stackedHeight < 8 {
 				stackedHeight = 8
 			}
-			c.list.Width = m.Width
-			c.list.Height = stackedHeight
+			c.list.SetWidth(m.Width)
+			c.list.SetHeight(stackedHeight)
 			c.setHelpWidth(m.Width)
 		}
 		c.ensureSelectionVisible()
@@ -247,8 +248,8 @@ func (c *cleanerPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 func (c *cleanerPage) View() string {
 	contentWidth := c.contentWidth
-	if contentWidth == 0 {
-		contentWidth = c.availableContentWidth()
+	if contentWidth < 40 {
+		contentWidth = 80 // Default reasonable width
 	}
 	const minHorizontalWidth = 82
 	isHorizontal := contentWidth >= minHorizontalWidth
@@ -529,27 +530,27 @@ func (c *cleanerPage) viewPresetList(totalWidth int) string {
 		return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
 	}
 
-	lines := make([]string, 0, len(c.presets)+2)
+	lines := make([]string, 0, len(c.presets)+1)
 	lines = append(lines, sectionTitleStyle.Render("Presets"))
-	for i, p := range c.presets {
+	for _, p := range c.presets {
 		check := checkbox(p.Enabled)
 		label := fmt.Sprintf("%s %s", check, p.Name)
 		if p.BuiltIn {
 			label += " • default"
 		}
-		wrapWidth := c.list.Width - 2
-		if wrapWidth < 8 {
-			wrapWidth = c.list.Width
-		}
-		label = wrapToWidth(label, wrapWidth)
-		if i == c.selected {
-			label = presetSelectedStyle.Render(label)
-		} else {
-			label = presetStyle.Render(label)
-		}
 		lines = append(lines, label)
 	}
-
+	// Style each preset line
+	for i := range lines {
+		if i == 0 {
+			continue // section title
+		}
+		if i-1 == c.selected {
+			lines[i] = presetSelectedStyle.Render(lines[i])
+		} else {
+			lines[i] = presetStyle.Render(lines[i])
+		}
+	}
 	c.list.SetContent(strings.Join(lines, "\n"))
 	c.ensureSelectionVisible()
 	return cleanerLeftColStyle.Width(totalWidth).Render(c.list.View())
@@ -588,7 +589,7 @@ func (c *cleanerPage) viewDetail(width int) string {
 		detail = append(detail, sectionTitleStyle.Render("Actions"))
 		c.setHelpWidth(width)
 		h := help.New()
-		h.Width = c.helpWidth
+		h.SetWidth(c.helpWidth)
 		detail = append(detail, h.ShortHelpView(c.keys.ShortHelp()))
 	}
 
@@ -636,14 +637,14 @@ func (c *cleanerPage) setHelpWidth(total int) {
 }
 
 func (c *cleanerPage) ensureSelectionVisible() {
-	height := c.list.Height
+	height := c.list.Height()
 	if height <= 0 {
-		height = cleanerColHeight
+		height = 16
 	}
 	if c.selected < 0 {
 		return
 	}
-	top := c.list.YOffset
+	top := c.list.YOffset()
 	bottom := top + height - 1
 	if c.selected < top {
 		c.list.SetYOffset(c.selected)
@@ -665,8 +666,6 @@ func (c *cleanerPage) progressPercent(index, totalPresets int) float64 {
 	}
 	return float64(index+1) / float64(totalPresets)
 }
-
-func (c *cleanerPage) estimatedColumnWidth() int { return cleanerColWidth }
 
 func (c cleanerPage) ShortHelp() []key.Binding  { return c.keys.ShortHelp() }
 func (c cleanerPage) FullHelp() [][]key.Binding { return c.keys.FullHelp() }

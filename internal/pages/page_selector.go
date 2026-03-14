@@ -1,36 +1,34 @@
 package pages
 
+// page_selector.go
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/filepicker"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"itzdabbzz.me/gomctools/internal/ui"
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 var (
-	// pickerBorderInactive is shown while the filepicker is not focused.
 	pickerBorderInactive = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("240")).
 				Padding(0, 1)
 
-	// pickerBorderActive is shown while the filepicker owns arrow-key input.
 	pickerBorderActive = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(ui.HighlightColor).
 				Padding(0, 1)
 
-	// pickerHint nudges the user to activate the browser.
 	pickerHintStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Italic(true)
@@ -48,14 +46,12 @@ type selectorPage struct {
 	spin     spinner.Model
 	spinning bool
 
-	// fpFocused controls whether the filepicker receives arrow-key input and
-	// whether CaptureGlobalNav returns true.  False by default so that the
-	// root tab-bar can still use arrow keys when the user first arrives on
-	// this page.
 	fpFocused bool
 
 	pageWidth  int
 	pageHeight int
+	contentW   int
+	contentH   int
 }
 
 // ─── Constructor ──────────────────────────────────────────────────────────────
@@ -68,18 +64,20 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	fp.ShowHidden = true
 
 	fp.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l/→", "open dir"))
-	fp.KeyMap.Select = filepicker.DefaultKeyMap().Select
+	fp.KeyMap.Back = key.NewBinding(key.WithKeys("h", "left", "esc", "backspace"), key.WithHelp("h/←/Esc/Bspace", "go up"))
+	fp.KeyMap.Down = key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down"))
+	fp.KeyMap.Up = key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up"))
 
 	if home, err := os.UserHomeDir(); err == nil {
 		fp.CurrentDirectory = home
 	}
 	fp.AutoHeight = false
-	fp.Height = 12
+	fp.SetHeight(12)
 
 	ti := textinput.New()
 	ti.Placeholder = "Path to modpack"
 	ti.CharLimit = 512
-	ti.Width = 64
+	ti.SetWidth(64)
 	ti.Focus()
 
 	sp := spinner.New()
@@ -94,12 +92,14 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 	}
 
 	return &selectorPage{
-		selectedPath: lastPath,
-		status:       "Type a path and press Enter — or press F to browse",
 		state:        state,
 		fp:           fp,
 		input:        ti,
 		spin:         sp,
+		spinning:     false,
+		fpFocused:    false,
+		selectedPath: lastPath,
+		status:       "Type a path and press Enter — or press F to browse",
 	}
 }
 
@@ -107,8 +107,6 @@ func NewSelectorPage(state *ui.SharedState) ui.Page {
 
 func (s *selectorPage) Title() string { return "Selector" }
 
-// CaptureGlobalNav only returns true while the filepicker is focused.
-// When false the root tab-bar receives arrow keys as normal.
 func (s *selectorPage) CaptureGlobalNav() bool { return s.fpFocused }
 
 func (s *selectorPage) Init() tea.Cmd {
@@ -131,6 +129,58 @@ func (s *selectorPage) Init() tea.Cmd {
 func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Handle Enter key EARLY before other components consume it.
+	// NOTE: bubbletea v2 KeyMsg.String() returns "enter", not "\n".
+	_, isKeyMsg := msg.(tea.KeyMsg)
+	if isKeyMsg {
+		typed := msg.(tea.KeyMsg)
+		if typed.String() == "enter" {
+			// Browser mode: load the currently displayed directory.
+			if s.fpFocused && s.fp.CurrentDirectory != "" {
+				abs, err := filepath.Abs(s.fp.CurrentDirectory)
+				if err == nil {
+					s.selectedPath = abs
+					s.input.SetValue(abs)
+					s.status = fmt.Sprintf("Loading pack from %s…", filepath.Base(abs))
+					s.spinning = true
+					s.state.Config.Selector.LastPath = abs
+					cmds = append(cmds, func() tea.Msg { return s.spin.Tick() }, ui.LoadPackCmd(abs))
+					return s, tea.Batch(cmds...)
+				}
+			}
+			// Text-input mode: validate and load from the typed path.
+			if !s.fpFocused {
+				trimmed := strings.TrimSpace(s.input.Value())
+				if trimmed == "" {
+					s.status = "Path cannot be empty"
+					return s, tea.Batch(cmds...)
+				}
+				info, err := os.Stat(trimmed)
+				if err != nil {
+					s.status = "Path not found"
+					return s, tea.Batch(cmds...)
+				}
+				if !info.IsDir() {
+					s.status = "Path is not a directory"
+					return s, tea.Batch(cmds...)
+				}
+				abs, err := filepath.Abs(trimmed)
+				if err != nil {
+					s.status = "Could not resolve absolute path"
+					return s, tea.Batch(cmds...)
+				}
+				s.selectedPath = abs
+				s.status = fmt.Sprintf("Loading pack from %s…", filepath.Base(abs))
+				s.fp.CurrentDirectory = abs
+				s.input.SetValue("")
+				s.spinning = true
+				s.state.Config.Selector.LastPath = abs
+				cmds = append(cmds, s.fp.Init(), func() tea.Msg { return s.spin.Tick() }, ui.LoadPackCmd(abs))
+				return s, tea.Batch(cmds...)
+			}
+		}
+	}
+
 	// Always route messages to the text input.
 	var inputCmd tea.Cmd
 	s.input, inputCmd = s.input.Update(msg)
@@ -147,16 +197,29 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		}
 	}
 
-	// Always forward non-keyboard messages to the filepicker so its internal
-	// directory-scan goroutines can populate the listing regardless of focus.
-	// Keyboard input is only forwarded when the picker is explicitly focused,
-	// which prevents arrow keys from leaking into the picker while navigating tabs.
-	_, isKeyMsg := msg.(tea.KeyMsg)
+	// Handle q to exit browser.
+	if isKeyMsg && s.fpFocused {
+		typed := msg.(tea.KeyMsg)
+		if typed.String() == "q" {
+			s.fpFocused = false
+			s.input.Focus()
+			s.status = "Type a path and press Enter — or press F to browse"
+			return s, nil
+		}
+	}
+
+	// Forward messages to filepicker.
 	if !isKeyMsg || s.fpFocused {
+		prevDir := s.fp.CurrentDirectory
 		var fpCmd tea.Cmd
 		s.fp, fpCmd = s.fp.Update(msg)
 		if fpCmd != nil {
 			cmds = append(cmds, fpCmd)
+		}
+		// Sync text input and status when the browser navigates to a new directory.
+		if s.fpFocused && s.fp.CurrentDirectory != prevDir && s.fp.CurrentDirectory != "" {
+			s.input.SetValue(s.fp.CurrentDirectory)
+			s.status = fmt.Sprintf("Browsing: %s", s.fp.CurrentDirectory)
 		}
 	}
 
@@ -169,18 +232,22 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			return s, tea.Batch(cmds...)
 		}
 		s.selectedPath = typed.Info.InstancePath
-		s.status = fmt.Sprintf("✓  Loaded %d mods from %s",
+		// Clear status back to a neutral ready-state after a successful load.
+		s.status = fmt.Sprintf("✓ Loaded %d mods from %s",
 			typed.Info.Counts.Total, filepath.Base(typed.Info.InstancePath))
 		s.state.Config.Selector.LastPath = s.selectedPath
 		return s, tea.Batch(cmds...)
 
+	case ui.ContentSizeMsg:
+		s.contentW = typed.Width
+		s.contentH = typed.Height
+		s.updateLayout()
+
 	case tea.WindowSizeMsg:
 		s.pageWidth = typed.Width
 		s.pageHeight = typed.Height
-		s.updateLayout()
 
 	case tea.KeyMsg:
-		// Quit / help always work regardless of focus state.
 		if key.Matches(typed, ui.DefaultKeys.Quit) {
 			return s, tea.Quit
 		}
@@ -188,82 +255,16 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 			return s, func() tea.Msg { return ui.ToggleHelpMsg{} }
 		}
 
-		// ── Filepicker focus management ────────────────────────────────────
-		// Escape releases the filepicker and gives arrow keys back to the
-		// root tab-bar.
-		if s.fpFocused && typed.Type == tea.KeyEsc {
-			s.fpFocused = false
-			s.input.Focus()
-			s.status = "Type a path and press Enter — or press F to browse"
-			return s, tea.Batch(cmds...)
-		}
-
-		// F (or Tab) activates the filepicker browser when it is not focused.
-		if !s.fpFocused && (typed.String() == "f" || typed.Type == tea.KeyTab) {
+		if !s.fpFocused && (typed.String() == "f" || typed.String() == "\t") {
 			s.fpFocused = true
 			s.input.Blur()
-			s.status = "Browsing — Enter to load, Esc to exit browser"
-			// Sync the picker to whatever the text input contains, if valid.
+			s.status = "Browsing — l/→ to open, Enter to load, q to exit"
 			if trimmed := strings.TrimSpace(s.input.Value()); trimmed != "" {
 				if info, err := os.Stat(trimmed); err == nil && info.IsDir() {
 					s.fp.CurrentDirectory = trimmed
 					cmds = append(cmds, s.fp.Init())
 				}
 			}
-			return s, tea.Batch(cmds...)
-		}
-
-		// ── Text-input Enter → load pack ──────────────────────────────────
-		// Only process Enter when the filepicker is not capturing input.
-		if !s.fpFocused && typed.Type == tea.KeyEnter {
-			trimmed := strings.TrimSpace(s.input.Value())
-			if trimmed == "" {
-				s.status = "Path cannot be empty"
-				return s, tea.Batch(cmds...)
-			}
-			info, err := os.Stat(trimmed)
-			if err != nil {
-				s.status = "Path not found"
-				return s, tea.Batch(cmds...)
-			}
-			if !info.IsDir() {
-				s.status = "Path is not a directory"
-				return s, tea.Batch(cmds...)
-			}
-			abs, err := filepath.Abs(trimmed)
-			if err != nil {
-				s.status = "Could not resolve absolute path"
-				return s, tea.Batch(cmds...)
-			}
-			s.selectedPath = abs
-			s.status = "Loading pack…"
-			s.fp.CurrentDirectory = abs
-			s.input.SetValue("")
-			s.spinning = true
-			s.state.Config.Selector.LastPath = abs
-			cmds = append(cmds, s.fp.Init(), spinner.Tick, ui.LoadPackCmd(abs))
-			return s, tea.Batch(cmds...)
-		}
-
-		// ── Filepicker Enter → load selected directory ────────────────────
-		if s.fpFocused && typed.Type == tea.KeyEnter {
-			dir := s.fp.CurrentDirectory
-			if dir == "" {
-				return s, tea.Batch(cmds...)
-			}
-			abs, err := filepath.Abs(dir)
-			if err != nil {
-				s.status = "Could not resolve path"
-				return s, tea.Batch(cmds...)
-			}
-			s.fpFocused = false
-			s.input.Focus()
-			s.selectedPath = abs
-			s.status = "Loading pack…"
-			s.input.SetValue(abs)
-			s.spinning = true
-			s.state.Config.Selector.LastPath = abs
-			cmds = append(cmds, spinner.Tick, ui.LoadPackCmd(abs))
 			return s, tea.Batch(cmds...)
 		}
 	}
@@ -274,30 +275,22 @@ func (s *selectorPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
 func (s *selectorPage) updateLayout() {
-	if s.pageWidth == 0 || s.pageHeight == 0 {
+	if s.contentW == 0 || s.contentH == 0 {
 		return
 	}
-	// Account for doc + window frames plus the picker border (2 sides × 1 col padding + 1 border).
-	hFrame := ui.DocStyle.GetHorizontalFrameSize() +
-		ui.WindowStyle.GetHorizontalFrameSize() +
-		pickerBorderInactive.GetHorizontalFrameSize()
-	innerWidth := s.pageWidth - hFrame - 2
+
+	innerWidth := s.contentW - pickerBorderInactive.GetHorizontalFrameSize() - 2
 	if innerWidth < 48 {
 		innerWidth = 48
 	}
-	s.input.Width = innerWidth
+	s.input.SetWidth(innerWidth)
 
-	// Reserve rows for: dir line, status, blank, path label, input, blank,
-	// hint, and the border's vertical frame.
-	reserved := ui.DocStyle.GetVerticalFrameSize() +
-		ui.WindowStyle.GetVerticalFrameSize() +
-		pickerBorderInactive.GetVerticalFrameSize() +
-		7 // dir + status + gap + label + input + gap + hint
-	usableHeight := s.pageHeight - reserved
+	reserved := pickerBorderInactive.GetVerticalFrameSize() + 10
+	usableHeight := s.contentH - reserved
 	if usableHeight < 6 {
 		usableHeight = 6
 	}
-	s.fp.Height = usableHeight
+	s.fp.SetHeight(usableHeight)
 }
 
 // ─── View ─────────────────────────────────────────────────────────────────────
@@ -305,32 +298,38 @@ func (s *selectorPage) updateLayout() {
 func (s *selectorPage) View() string {
 	var b strings.Builder
 
+	centeredStyle := lipgloss.NewStyle().
+		Width(s.contentW).
+		Align(lipgloss.Center)
+
 	// ── Selected directory ────────────────────────────────────────────────
 	b.WriteString(labelStyle.Render("Directory: "))
 	b.WriteString(valueStyle.Render(s.selectedPath))
 	b.WriteString("\n")
 
 	// ── Status / spinner ──────────────────────────────────────────────────
+	// Always render s.status — the spinner is a prefix decoration only.
 	if s.spinning {
 		b.WriteString(s.spin.View())
-		b.WriteString(statusStyle.Render(" Loading pack…"))
-	} else if s.status != "" {
+		b.WriteString(" ")
+	}
+	if s.status != "" {
 		b.WriteString(statusStyle.Render(s.status))
 	}
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// ── Text input ────────────────────────────────────────────────────────
 	b.WriteString(labelStyle.Render("Path:"))
 	b.WriteString("\n")
 	b.WriteString(s.input.View())
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// ── Filepicker with focus-aware border ────────────────────────────────
 	var hint string
 	borderStyle := pickerBorderInactive
 	if s.fpFocused {
 		borderStyle = pickerBorderActive
-		hint = pickerHintStyle.Render("↑/↓ navigate  l/→ open  Enter load  Esc exit browser")
+		hint = pickerHintStyle.Render("↑/↓ or j/k navigate  ←/h/esc go up  l/→ open  Enter load  q exit")
 	} else {
 		hint = pickerHintStyle.Render("Press F (or Tab) to activate the directory browser")
 	}
@@ -343,7 +342,7 @@ func (s *selectorPage) View() string {
 	b.WriteString("\n")
 	b.WriteString(hint)
 
-	return b.String()
+	return centeredStyle.Render(b.String())
 }
 
 // ─── Key help ─────────────────────────────────────────────────────────────────

@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
-	"itzdabbzz.me/gomctools/internal/config"
-	page "itzdabbzz.me/gomctools/internal/pages"
-	"itzdabbzz.me/gomctools/internal/ui"
+	"github.com/ItzDabbzz/GoMCTools/internal/config"
+	page "github.com/ItzDabbzz/GoMCTools/internal/pages"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
 func main() {
+	// Initialize UI styles for adaptive colors
+	ui.Init()
+
 	// Load config from disk.
 	cfg, err := config.Load()
 	if err != nil {
@@ -38,7 +41,7 @@ func main() {
 		model.SetActivePage(1)
 	}
 
-	program := tea.NewProgram(model, tea.WithMouseAllMotion())
+	program := tea.NewProgram(model)
 	if _, err := program.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)

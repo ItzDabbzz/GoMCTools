@@ -8,11 +8,10 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
-	"github.com/charmbracelet/glow/v2/utils"
-	"itzdabbzz.me/gomctools/internal/ui"
 )
 
 // generateMarkdown builds the full markdown modlist string from the currently
@@ -154,8 +153,15 @@ func (m *modlistPage) renderMarkdown(md string) string {
 	}
 
 	if m.renderer == nil || m.rendererW != wrap {
+		// Determine if we're on a dark background
+		isDark := lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+		style := "dark"
+		if !isDark {
+			style = "light"
+		}
+
 		options := []glamour.TermRendererOption{
-			utils.GlamourStyle(styles.AutoStyle, false),
+			glamour.WithStylePath(style),
 			glamour.WithWordWrap(wrap),
 		}
 		r, err := glamour.NewTermRenderer(options...)

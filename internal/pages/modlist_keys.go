@@ -1,6 +1,6 @@
 package pages
 
-import "github.com/charmbracelet/bubbles/key"
+import "charm.land/bubbles/v2/key"
 
 // modlistKeyMap holds all keybindings used by the Modlist Generator page.
 type modlistKeyMap struct {

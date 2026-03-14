@@ -1,16 +1,17 @@
 package pages
 
+//page_modlist.go
 import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
-	"itzdabbzz.me/gomctools/internal/ui"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // modlistMode controls whether mods are listed in a single section or split
@@ -41,15 +42,18 @@ type modlistPage struct {
 	viewport   viewport.Model
 	pageWidth  int
 	pageHeight int
-	contentW   int
-	settingsW  int
-	previewW   int
-	status     string
-	markdown   string
-	lastWrap   int
-	renderer   *glamour.TermRenderer
-	rendererW  int
-	dirty      bool
+	// contentW/contentH are the exact inner dimensions delivered by
+	// ContentSizeMsg — use these instead of subtracting frame sizes manually.
+	contentW  int
+	contentH  int
+	settingsW int
+	previewW  int
+	status    string
+	markdown  string
+	lastWrap  int
+	renderer  *glamour.TermRenderer
+	rendererW int
+	dirty     bool
 
 	// Cached markdown and its settings hash to avoid unnecessary re-renders.
 	cachedMarkdown     string
@@ -64,7 +68,7 @@ func (m *modlistPage) SetZone(z *zone.Manager, prefix string) {
 
 // NewModlistPage constructs a new Modlist Generator page backed by state.
 func NewModlistPage(state *ui.SharedState) ui.Page {
-	vp := viewport.New(0, 0)
+	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	vp.MouseWheelDelta = 2
 	vp.MouseWheelEnabled = true
 
@@ -104,17 +108,25 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		m.status = fmt.Sprintf("Loaded %d mods", len(typed.Info.Mods))
 		m.dirty = true
 	case zone.MsgZoneInBounds:
-		if typed.Event.Type == tea.MouseLeft {
+		if typed.Event.Mouse().Button == tea.MouseLeft {
 			if id := m.resolveZoneID(typed.Zone); id != "" {
 				m = m.handleClick(id)
 			}
 		}
+	// ContentSizeMsg delivers the exact inner dimensions the root model has
+	// already computed. Use these directly instead of re-deriving them from
+	// the raw WindowSizeMsg by subtracting frame overhead, which is fragile.
+	case ui.ContentSizeMsg:
+		m.contentW = typed.Width
+		m.contentH = typed.Height
+		m.updateLayout()
 	case tea.WindowSizeMsg:
+		// Keep pageWidth/pageHeight for any code that still needs raw size,
+		// but layout is now driven by ContentSizeMsg above.
 		m.pageWidth = typed.Width
 		m.pageHeight = typed.Height
-		m.updateLayout()
 	case tea.MouseMsg:
-		if m.zone != nil && typed.Type == tea.MouseLeft {
+		if m.zone != nil && typed.Mouse().Button == tea.MouseLeft {
 			if id := m.resolveMouseZone(typed); id != "" {
 				m = m.handleClick(id)
 			}
@@ -166,15 +178,15 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// updateLayout recomputes all dimension fields from the current window size.
+// updateLayout recomputes all dimension fields from ContentSizeMsg dimensions.
+// contentW and contentH must already be set before calling this.
 func (m *modlistPage) updateLayout() {
 	const gap = 2
 
-	contentW := m.pageWidth - ui.DocStyle.GetHorizontalFrameSize() - ui.WindowStyle.GetHorizontalFrameSize()
+	contentW := m.contentW
 	if contentW < 64 {
 		contentW = 64
 	}
-	m.contentW = contentW
 
 	settings := m.estimatedSettingsWidth(contentW)
 	if settings < 44 {
@@ -193,14 +205,16 @@ func (m *modlistPage) updateLayout() {
 	m.previewW = preview
 
 	if m.previewW > 0 {
-		m.viewport.Width = m.previewW
+		m.viewport.SetWidth(m.previewW)
 	}
-	frame := ui.WindowStyle.GetVerticalFrameSize()
-	avail := m.pageHeight - ui.DocStyle.GetVerticalFrameSize() - frame - 4
+
+	// ContentSizeMsg already accounts for all frame overhead (tab bar, footer,
+	// window border, padding). Reserve 1 line for the status bar in View().
+	avail := m.contentH - 1
 	if avail < 8 {
 		avail = 8
 	}
-	m.viewport.Height = avail
+	m.viewport.SetHeight(avail)
 
 	wrap := preview - 2
 	if wrap < 16 {
@@ -233,27 +247,44 @@ func (m *modlistPage) rebuild() {
 }
 
 func (m *modlistPage) View() string {
-	if m.pageWidth == 0 || m.pageHeight == 0 {
+	// Ensure we have reasonable dimensions
+	displayW := m.contentW
+	if displayW < 40 {
+		displayW = 80
+	}
+	displayH := m.contentH
+	if displayH < 10 {
+		displayH = 20
+	}
+
+	if displayW == 0 || displayH == 0 {
 		return "Modlist Generator - initializing..."
 	}
 
-	settings := lipgloss.NewStyle().Width(m.settingsW).Render(m.renderSettings())
+	settingsW := m.settingsW
+	if settingsW < 10 || settingsW > displayW-20 {
+		settingsW = displayW / 3
+	}
+	previewW := displayW - settingsW - 2
+	if previewW < 20 {
+		previewW = 40
+	}
+
+	settings := lipgloss.NewStyle().Width(settingsW).Render(m.renderSettings())
 
 	var preview string
 	if m.state != nil && m.state.Pack.InstancePath != "" {
-		preview = lipgloss.NewStyle().Width(m.previewW).Render(m.viewport.View())
+		preview = lipgloss.NewStyle().Width(previewW).Render(m.viewport.View())
 	} else {
 		preview = lipgloss.NewStyle().
-			Width(m.previewW).
-			Height(m.viewport.Height).
+			Width(previewW).
+			Height(displayH / 2).
 			Render(statusStyle.Render("Load a pack from the Selector tab to generate a mod list."))
 	}
 
 	gap := strings.Repeat(" ", 2)
 	layout := lipgloss.JoinHorizontal(lipgloss.Top, settings, gap, preview)
-	if m.contentW > 0 {
-		layout = lipgloss.NewStyle().Width(m.contentW).Render(layout)
-	}
+	layout = lipgloss.NewStyle().Width(displayW).Render(layout)
 	if m.status != "" {
 		layout += "\n" + statusStyle.Render(m.status)
 	}
@@ -406,7 +437,7 @@ func (m *modlistPage) detectPackChange() {
 
 func (m *modlistPage) estimatedSettingsWidth(total int) int {
 	if total == 0 {
-		total = m.pageWidth
+		total = m.contentW
 	}
 	if total == 0 {
 		return 48

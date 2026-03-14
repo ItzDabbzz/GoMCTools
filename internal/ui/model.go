@@ -13,11 +13,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // Model is the root application state, managing multiple Page instances
@@ -104,8 +104,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
 		if m.zone != nil {
-			m.zone.AnyInBounds(m, msg)
-			if msg.Type == tea.MouseLeft {
+			mouse := msg.Mouse()
+			if mouse.Button == tea.MouseLeft {
 				for i := range m.pages {
 					z := m.zone.Get(fmt.Sprintf("%stab-%d", m.zonePrefix, i))
 					if z != nil && z.InBounds(msg) {
@@ -150,7 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = msg.Width
+		m.help.SetWidth(msg.Width)
 		m.contentWidth, m.contentHeight = m.computeContentSize()
 	case PackLoadedMsg:
 		if m.state != nil {
@@ -174,9 +174,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the full TUI frame: tab bar, active page (or help overlay), and footer.
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	if len(m.pages) == 0 {
-		return "No pages available"
+		v := tea.NewView("No pages available")
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
 	}
 
 	if m.width > 0 && m.height > 0 && (m.width < MinWidth || m.height < MinHeight) {
@@ -190,13 +192,20 @@ func (m Model) View() string {
 			contentHeight = 3
 		}
 		placed := lipgloss.Place(m.width, contentHeight, lipgloss.Center, lipgloss.Center, box)
-		return placed + "\n" + footer
+		v := tea.NewView(placed + "\n" + footer)
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
 	}
 
 	titles := pageTitles(m.pages)
 	innerWidth := m.width - docStyle.GetHorizontalFrameSize()
 	if innerWidth < 0 {
 		innerWidth = 0
+	}
+
+	contentWidth := innerWidth - windowStyle.GetHorizontalFrameSize()
+	if contentWidth < 0 {
+		contentWidth = 0
 	}
 
 	rowLines := strings.Split(renderTabs(m.zone, m.zonePrefix, titles, m.activePage), "\n")
@@ -206,7 +215,7 @@ func (m Model) View() string {
 			rowLines[i] = line
 			continue
 		}
-		fillWidth := innerWidth - lipgloss.Width(line) - 1
+		fillWidth := contentWidth - lipgloss.Width(line) - 1
 		if fillWidth < 0 {
 			fillWidth = 0
 		}
@@ -223,7 +232,7 @@ func (m Model) View() string {
 		footer = m.help.ShortHelpView(m.pageShortHelp())
 	}
 
-	contentWidth := innerWidth - windowStyle.GetHorizontalFrameSize()
+	contentWidth = innerWidth - windowStyle.GetHorizontalFrameSize()
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
@@ -261,9 +270,6 @@ func (m Model) View() string {
 	}
 
 	bottom := ""
-	if innerWidth >= 2 {
-		bottom = borderFillStyle.Render("└" + strings.Repeat("─", innerWidth-2) + "┘")
-	}
 
 	doc := strings.Builder{}
 	doc.WriteString(row)
@@ -282,9 +288,11 @@ func (m Model) View() string {
 	}
 	rendered := container.Render(doc.String())
 	if m.zone != nil {
-		return m.zone.Scan(rendered)
+		rendered = m.zone.Scan(rendered)
 	}
-	return rendered
+	v := tea.NewView(rendered)
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 // pageShortHelp merges the active page's short bindings with global defaults.
@@ -349,16 +357,25 @@ func (m Model) computeContentSize() (width, height int) {
 		footerLines = 1 // single line of short-help
 		bottomRule  = 1 // the "└───┘" row drawn below the window box
 	)
-	innerWidth := m.width - docStyle.GetHorizontalFrameSize()
-	width = innerWidth - windowStyle.GetHorizontalFrameSize()
-	if width < 0 {
-		width = 0
+
+	// Get frame sizes - with defensive minimums
+	docHFrame := docStyle.GetHorizontalFrameSize()
+	winHFrame := windowStyle.GetHorizontalFrameSize()
+	docVFrame := docStyle.GetVerticalFrameSize()
+	winVFrame := windowStyle.GetVerticalFrameSize()
+
+	// Calculate with minimum floor of 20 chars width and 8 lines height
+	// This ensures the UI is usable even on small or unusual terminal sizes
+	width = m.width - docHFrame - winHFrame
+	if width < 20 {
+		width = 20
 	}
-	available := m.height - docStyle.GetVerticalFrameSize()
-	height = available - tabBarLines - footerLines - bottomRule - windowStyle.GetVerticalFrameSize()
-	if height < 1 {
-		height = 1
+
+	height = m.height - docVFrame - winVFrame - tabBarLines - footerLines - bottomRule
+	if height < 8 {
+		height = 8
 	}
+
 	return width, height
 }
 

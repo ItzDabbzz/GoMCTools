@@ -1,12 +1,13 @@
 package pages
 
+// page_home.go
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"itzdabbzz.me/gomctools/internal/ui"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
 var homeLogo = []string{
@@ -32,7 +33,10 @@ func (h homePage) Init() tea.Cmd { return nil }
 
 func (h homePage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
+	// ContentSizeMsg carries the exact inner dimensions already stripped of
+	// the tab bar, footer, window border, and padding — use these instead of
+	// the raw tea.WindowSizeMsg so centering is always pixel-perfect.
+	case ui.ContentSizeMsg:
 		h.width = msg.Width
 		h.height = msg.Height
 	case tea.KeyMsg:
@@ -47,24 +51,54 @@ func (h homePage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 func (h homePage) View() string {
 	logo := strings.Join(homeLogo, "\n")
 
+	// Ensure we have reasonable dimensions for display
+	displayWidth := h.width
+	if displayWidth < 40 {
+		displayWidth = 80 // Default reasonable width
+	}
+	displayHeight := h.height
+	if displayHeight < 10 {
+		displayHeight = 24
+	}
+
+	// Use a fixed reasonable width for centering elements
+	// This should match the widest line in the logo
+	logoWidth := 52 // Width of the GoMCTools logo
+
 	logoStyled := lipgloss.NewStyle().
 		Foreground(ui.HighlightColor).
 		Bold(true).
+		Width(logoWidth).
+		Align(lipgloss.Center).
 		Render(logo)
 
-	subtitle := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "#555555", Dark: "#aaaaaa"}).
+	subtitleStyled := lipgloss.NewStyle().
+		Foreground(ui.HighlightColor).
 		Italic(true).
+		Width(logoWidth).
+		Align(lipgloss.Center).
 		Render(homeSubtitle)
 
-	hint := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "#777777", Dark: "#888888"}).
+	hintStyled := lipgloss.NewStyle().
+		Foreground(ui.HighlightColor).
+		Width(logoWidth).
+		Align(lipgloss.Center).
 		Render("Press enter or tab to get started")
 
-	// windowStyle in model.go already has Align(Center) — just return the
-	// content directly. Setting Width(h.width) here overshoots the frame
-	// (which has its own border/padding) and breaks centering.
-	return lipgloss.JoinVertical(lipgloss.Center, logoStyled, "", subtitle, "", hint)
+	content := lipgloss.JoinVertical(lipgloss.Center, logoStyled, "", subtitleStyled, "", hintStyled)
+
+	// Use Width + Align to center the content within available width
+	if displayWidth > 0 {
+		centeredContent := lipgloss.NewStyle().
+			Width(displayWidth).
+			Align(lipgloss.Center).
+			Render(content)
+		if displayHeight > 0 {
+			return lipgloss.Place(displayWidth, displayHeight, lipgloss.Center, lipgloss.Center, centeredContent)
+		}
+		return centeredContent
+	}
+	return content
 }
 
 // homeKeyMap holds the bindings specific to the home page.

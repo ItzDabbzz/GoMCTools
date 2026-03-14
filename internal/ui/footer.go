@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/charmbracelet/bubbles/key"
+import "charm.land/bubbles/v2/key"
 
 // GlobalKeyMap defines the root-level navigation and application bindings.
 // It implements help.KeyMap so it can be passed directly to help.Model.View().
@@ -27,11 +27,11 @@ func (k GlobalKeyMap) FullHelp() [][]key.Binding {
 // DefaultKeys is the application-wide key map used by the root model.
 var DefaultKeys = GlobalKeyMap{
 	NextTab: key.NewBinding(
-		key.WithKeys("tab", "right", "l"),
+		key.WithKeys("tab", "ctrl+right", "l"),
 		key.WithHelp("tab/→", "next tab"),
 	),
 	PrevTab: key.NewBinding(
-		key.WithKeys("shift+tab", "left", "h", "p"),
+		key.WithKeys("shift+tab", "ctrl+left", "h", "p"),
 		key.WithHelp("shift+tab/←", "prev tab"),
 	),
 	Help: key.NewBinding(

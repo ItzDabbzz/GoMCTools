@@ -65,12 +65,14 @@ type CFFile struct {
 // cfInstanceData holds the top-level fields we need from minecraftinstance.json.
 // The full file is streamed; only these fields are materialised in memory.
 type cfInstanceData struct {
-	Name        string
-	MCVersion   string // from top-level "gameVersion" or baseModLoader.minecraftVersion
-	LoaderID    string // raw loader string, e.g. "neoforge-21.1.219"
-	PackVersion string // from embedded manifest.version
-	PackAuthor  string // from embedded manifest.author
-	Addons      []CFAddonSummary
+	Name         string
+	MCVersion    string // from top-level "gameVersion" or baseModLoader.minecraftVersion
+	LoaderID     string // raw loader string, e.g. "neoforge-21.1.219"
+	PackVersion  string // from embedded manifest.version
+	PackAuthor   string // from embedded manifest.author
+	WebsiteURL   string // from installedModpack.webSiteURL
+	ThumbnailURL string // from installedModpack.thumbnailUrl
+	Addons       []CFAddonSummary
 }
 
 // CFAddonSummary is the minimal subset decoded from each installedAddon entry.
@@ -140,6 +142,10 @@ func loadFromCFInstance(root, instancePath, manifestPath string, info PackInfo) 
 	}
 	info.MinecraftVersion = data.MCVersion
 	info.LoaderUID, info.LoaderVersion = parseLoaderID(data.LoaderID)
+	info.PackVersion = data.PackVersion
+	info.PackAuthor = data.PackAuthor
+	info.WebsiteURL = data.WebsiteURL
+	info.ThumbnailURL = data.ThumbnailURL
 
 	// Cross-reference manifest.json to fill any gaps.
 	if fileExists(manifestPath) {
@@ -157,6 +163,12 @@ func loadFromCFInstance(root, instancePath, manifestPath string, info PackInfo) 
 						break
 					}
 				}
+			}
+			if info.PackVersion == "" {
+				info.PackVersion = m.Version
+			}
+			if info.PackAuthor == "" {
+				info.PackAuthor = m.Author
 			}
 		}
 	}
@@ -180,6 +192,8 @@ func loadFromCFManifest(manifestPath string, info PackInfo) (PackInfo, error) {
 		info.InstanceName = m.Name
 	}
 	info.MinecraftVersion = m.Minecraft.Version
+	info.PackVersion = m.Version
+	info.PackAuthor = m.Author
 	for _, l := range m.Minecraft.ModLoaders {
 		if l.Primary {
 			info.LoaderUID, info.LoaderVersion = parseLoaderID(l.ID)
@@ -306,6 +320,29 @@ func streamCFInstance(path string) (cfInstanceData, error) {
 			result.PackVersion = m.Version
 			result.PackAuthor = m.Author
 
+		// installedModpack carries the project-level metadata: URL, thumbnail, authors.
+		case "installedModpack":
+			var imp struct {
+				PrimaryAuthor string `json:"primaryAuthor"`
+				WebSiteURL    string `json:"webSiteURL"`
+				ThumbnailURL  string `json:"thumbnailUrl"`
+				Authors       []struct {
+					Name string `json:"name"`
+				} `json:"authors"`
+			}
+			if err := dec.Decode(&imp); err != nil {
+				return result, fmt.Errorf("decode installedModpack: %w", err)
+			}
+			if result.PackAuthor == "" {
+				result.PackAuthor = imp.PrimaryAuthor
+				// Fall back to first author in the list if primary is empty.
+				if result.PackAuthor == "" && len(imp.Authors) > 0 {
+					result.PackAuthor = imp.Authors[0].Name
+				}
+			}
+			result.WebsiteURL = imp.WebSiteURL
+			result.ThumbnailURL = imp.ThumbnailURL
+
 		// installedAddons is the large array — stream it one element at a time.
 		case "installedAddons":
 			// Consume opening '['.
@@ -368,10 +405,10 @@ func cfAddonsToMods(addons []CFAddonSummary) ([]IndexedMod, ModCounts) {
 
 	for _, addon := range addons {
 		mods = append(mods, IndexedMod{
-			Name:         addon.Name,
-			Filename:     addon.InstalledFile.FileName,
-			Source:       SourceCurseforge,
-			ReleaseType:  cfReleaseTypeName(addon.InstalledFile.ReleaseType),
+			Name:        addon.Name,
+			Filename:    addon.InstalledFile.FileName,
+			Source:      SourceCurseforge,
+			ReleaseType: cfReleaseTypeName(addon.InstalledFile.ReleaseType),
 			// Side is not available from the CurseForge API at the per-addon level.
 			GameVersions: addon.InstalledFile.GameVersion,
 			DownloadURL:  addon.InstalledFile.DownloadURL,

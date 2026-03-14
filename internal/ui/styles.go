@@ -2,10 +2,19 @@ package ui
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/charmbracelet/lipgloss"
-	zone "github.com/lrstanley/bubblezone"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
+	"github.com/charmbracelet/colorprofile"
+	zone "github.com/lrstanley/bubblezone/v2"
 )
+
+// Init initializes the compat package for adaptive colors.
+func Init() {
+	compat.HasDarkBackground = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+	compat.Profile = colorprofile.Detect(os.Stdout, os.Environ())
+}
 
 func tabBorderWithBottom(left, middle, right string) lipgloss.Border {
 	border := lipgloss.RoundedBorder()
@@ -19,10 +28,10 @@ var (
 	inactiveTabBorder = tabBorderWithBottom("┴", "─", "┴")
 	activeTabBorder   = tabBorderWithBottom("┘", " ", "└")
 	docStyle          = lipgloss.NewStyle().Padding(0, 2, 0, 2)
-	highlightColor    = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	highlightColor    = compat.AdaptiveColor{Light: lipgloss.Color("#874BFD"), Dark: lipgloss.Color("#7D56F4")}
 	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
 	activeTabStyle    = inactiveTabStyle.Border(activeTabBorder, true)
-	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(1, 0).Align(lipgloss.Center).Border(lipgloss.NormalBorder()).UnsetBorderTop()
+	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(1, 1).Border(lipgloss.NormalBorder()).UnsetBorderTop()
 	inputBoxStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).BorderForeground(highlightColor).Padding(0, 1)
 	borderFillStyle   = lipgloss.NewStyle().Foreground(highlightColor)
 	warningBoxStyle   = lipgloss.NewStyle().

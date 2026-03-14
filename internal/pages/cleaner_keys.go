@@ -1,6 +1,6 @@
 package pages
 
-import "github.com/charmbracelet/bubbles/key"
+import "charm.land/bubbles/v2/key"
 
 // cleanerKeyMap holds all keybindings used by the Pack Cleaner page.
 type cleanerKeyMap struct {

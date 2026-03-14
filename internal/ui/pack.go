@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/pelletier/go-toml/v2"
 
-	"itzdabbzz.me/gomctools/internal/config"
+	"github.com/ItzDabbzz/GoMCTools/internal/config"
 )
 
 // ─── Pack source type ─────────────────────────────────────────────────────────
@@ -55,10 +55,15 @@ type PackInfo struct {
 	InstanceName     string
 	MinecraftDir     string
 	ModsDir          string
-	IndexDir         string       // Prism-only: path to mods/.index; empty for CurseForge
+	IndexDir         string // Prism-only: path to mods/.index; empty for CurseForge
 	MinecraftVersion string
-	LoaderUID        string       // e.g. "net.neoforged", "net.minecraftforge"
+	LoaderUID        string // e.g. "net.neoforged", "net.minecraftforge"
 	LoaderVersion    string
+	PackVersion      string       // pack release version, e.g. "0.12.0-beta"
+	PackAuthor       string       // primary author / team name
+	PackDescription  string       // short description if available
+	WebsiteURL       string       // CurseForge project page URL
+	ThumbnailURL     string       // CurseForge thumbnail URL
 	Manifest         *MMCManifest // Prism-only: parsed mmc-pack.json; nil for CurseForge
 	Mods             []IndexedMod
 	Counts           ModCounts
@@ -73,8 +78,8 @@ type IndexedMod struct {
 	Filename      string
 	Source        ModSource
 	ReleaseType   string
-	Side          string    // empty for CurseForge (not exposed by the API)
-	Loaders       []string  // empty for CurseForge
+	Side          string   // empty for CurseForge (not exposed by the API)
+	Loaders       []string // empty for CurseForge
 	GameVersions  []string
 	DownloadURL   string
 	Hash          string

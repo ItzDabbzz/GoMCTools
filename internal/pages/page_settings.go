@@ -1,12 +1,13 @@
 package pages
 
+// page_settings.go
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"itzdabbzz.me/gomctools/internal/ui"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/ItzDabbzz/GoMCTools/internal/ui"
 )
 
 type settingsPage struct {
@@ -28,7 +29,9 @@ func (s *settingsPage) Init() tea.Cmd { return nil }
 
 func (s *settingsPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
+	// ContentSizeMsg carries exact inner dimensions; raw WindowSizeMsg
+	// includes the frame overhead that the root model already accounts for.
+	case ui.ContentSizeMsg:
 		s.width = msg.Width
 		s.height = msg.Height
 	case tea.KeyMsg:
@@ -119,12 +122,12 @@ var (
 				Width(3)
 
 	settingsDescStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.AdaptiveColor{Light: "#333333", Dark: "#cccccc"})
+				Foreground(ui.HighlightColor)
 
 	settingsOnStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#5af78e")).
 			Bold(true)
 
 	settingsOffStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"})
+				Foreground(ui.HighlightColor)
 )
