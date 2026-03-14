@@ -277,6 +277,10 @@ func loadPrismPack(root string) (PackInfo, error) {
 	info.Manifest = manifest
 	info.MinecraftVersion, info.LoaderUID, info.LoaderVersion = summarizeComponents(manifest)
 
+	// Read instance.cfg for the human-set instance name and description notes.
+	// The file is a simple key=value format; we only need "name" and "notes".
+	readInstanceCfg(filepath.Join(root, "instance.cfg"), &info)
+
 	mods, counts, err := loadIndexEntries(info.IndexDir)
 	if err != nil {
 		return info, err
@@ -413,4 +417,40 @@ func toIndexedMod(idx indexFile) IndexedMod {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
+}
+
+// readInstanceCfg parses a Prism Launcher instance.cfg file and writes the
+// fields it finds into info.  The file uses a simple key=value format (an INI
+// [General] header may be present but is ignored).  Only "name" and "notes"
+// are extracted; all other lines are skipped.
+//
+// Failures are silently swallowed: instance.cfg is optional metadata and a
+// missing or malformed file must never abort a pack load.
+func readInstanceCfg(path string, info *PackInfo) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.IndexByte(line, '=')
+		if idx < 0 {
+			continue
+		}
+		k := strings.TrimSpace(line[:idx])
+		v := strings.TrimSpace(line[idx+1:])
+		switch strings.ToLower(k) {
+		case "name":
+			if v != "" {
+				info.InstanceName = v
+			}
+		case "notes":
+			if v != "" {
+				info.PackDescription = v
+			}
+		}
+	}
 }

@@ -37,18 +37,6 @@ const (
 	modlistSortSide                      // by distribution side
 )
 
-// sortFieldLabel returns a short display name for each sort field.
-func sortFieldLabel(f modlistSort) string {
-	switch f {
-	case modlistSortSource:
-		return "Source"
-	case modlistSortSide:
-		return "Side"
-	default:
-		return "Name"
-	}
-}
-
 // modlistMode controls whether mods are listed in a single section or split
 // by their distribution side (client / server / both).
 type modlistMode int
@@ -347,7 +335,15 @@ func (m *modlistPage) updateLayout() {
 // ─── Rebuild ─────────────────────────────────────────────────────────────────
 
 // rebuild regenerates the output (if dirty) and refreshes the viewport content.
+// It is a no-op when layout dimensions have not yet been received (previewW==0)
+// so that we never set content on a zero-width viewport before ContentSizeMsg
+// arrives on the first frame.
 func (m *modlistPage) rebuild() {
+	if m.previewW == 0 {
+		// Layout not yet known — remain dirty so the next ContentSizeMsg triggers a real rebuild.
+		m.dirty = true
+		return
+	}
 	settingsHash := m.calculateSettingsHash()
 	if m.dirty || settingsHash != m.cachedSettingsHash || m.cachedMarkdown == "" {
 		m.markdown = m.generateOutput()
@@ -362,9 +358,20 @@ func (m *modlistPage) rebuild() {
 	//   • BBCode format          → always raw (no glamour renderer for BBCode)
 	//   • rawPreview is on       → raw source text
 	//   • otherwise              → glamour-rendered markdown
+	//
+	// For raw content we must hard-wrap at previewW before calling
+	// viewport.SetContent.  Bubble Tea's viewport splits on \n but does NOT
+	// itself word-wrap long lines; those lines then overflow the column width.
+	// When View() later wraps them inside lipgloss.NewStyle().Width(previewW),
+	// they expand to multiple visual rows, blowing up the layout height and
+	// shifting the settings column out of alignment.
 	noPack := m.state == nil || m.state.Pack.InstancePath == ""
 	if noPack || m.rawPreview || m.outputFormat == modlistFormatBBCode {
-		m.viewport.SetContent(m.markdown)
+		content := m.markdown
+		if m.previewW > 4 {
+			content = hardWrapLines(content, m.previewW-2)
+		}
+		m.viewport.SetContent(content)
 	} else {
 		m.viewport.SetContent(m.renderMarkdown(m.markdown))
 	}
@@ -375,6 +382,12 @@ func (m *modlistPage) rebuild() {
 // ─── View ─────────────────────────────────────────────────────────────────────
 
 func (m *modlistPage) View() string {
+	// Guard: ContentSizeMsg hasn't arrived yet — show a placeholder so the
+	// initial frame doesn't render garbage from zero-valued dimensions.
+	if m.settingsW == 0 || m.previewW == 0 {
+		return "Modlist Generator — loading…"
+	}
+
 	displayW := m.contentW
 	if displayW < 40 {
 		displayW = 80
@@ -396,7 +409,8 @@ func (m *modlistPage) View() string {
 		previewW = 40
 	}
 
-	settings := lipgloss.NewStyle().Width(settingsW).Render(m.renderSettings())
+	// renderSettings already pads each column manually — no Width wrapper needed.
+	settings := m.renderSettings()
 
 	var preview string
 	if m.state != nil && m.state.Pack.InstancePath != "" {
@@ -420,6 +434,16 @@ func (m *modlistPage) View() string {
 // ─── Settings panel ───────────────────────────────────────────────────────────
 
 // renderSettings builds the left-hand settings column.
+//
+// IMPORTANT: we deliberately avoid lipgloss.NewStyle().Width(n).Render() on any
+// string that contains zone-mark escape sequences.  Lipgloss's internal
+// line-width calculator counts the raw bytes of those sequences as printable
+// characters, so it under-pads or wraps zone-marked lines, shifting their
+// visual position by one row relative to the coordinate that zone.Scan()
+// recorded — causing the "click one row above" mis-hit.
+//
+// Instead we measure each line's visual width with lipgloss.Width() (which
+// correctly strips all escape sequences) and pad manually with spaces.
 func (m *modlistPage) renderSettings() string {
 	sortDir := "↑"
 	if !m.sortAsc {
@@ -438,9 +462,9 @@ func (m *modlistPage) renderSettings() string {
 		"",
 		sectionTitleStyle.Render("Sort"),
 		m.markOption("sort-name", fmt.Sprintf("%s By Name (s)", checkbox(m.sortField == modlistSortName))),
-		m.markOption("sort-source", fmt.Sprintf("%s By Source", checkbox(m.sortField == modlistSortSource))),
-		m.markOption("sort-side", fmt.Sprintf("%s By Side", checkbox(m.sortField == modlistSortSide))),
-		m.markOption("sort-dir", fmt.Sprintf("%s Ascending (S)", checkbox(m.sortAsc))+" "+sortDir),
+		m.markOption("sort-source", fmt.Sprintf("%s By Source (s)", checkbox(m.sortField == modlistSortSource))),
+		m.markOption("sort-side", fmt.Sprintf("%s By Side (s)", checkbox(m.sortField == modlistSortSide))),
+		m.markOption("sort-dir", fmt.Sprintf("%s Ascending (S) %s", checkbox(m.sortAsc), sortDir)),
 	}
 
 	right := []string{
@@ -460,13 +484,55 @@ func (m *modlistPage) renderSettings() string {
 		m.markOption("action-export", "Export (e)"),
 	}
 
-	colW := m.settingsW / 2
-	if colW < 22 {
-		colW = 22
+	// colGap is the space between the two settings columns.
+	// colW is derived from settingsW so that 2*colW + colGap <= settingsW,
+	// ensuring the settings output never exceeds settingsW and overflows into
+	// the preview column when the outer layout is rendered.
+	const colGap = 2
+	colW := (m.settingsW - colGap) / 2
+	if colW < 20 {
+		colW = 20
 	}
-	leftCol := settingsStyle.Width(colW + 4).Render(strings.Join(left, "\n"))
-	rightCol := settingsStyle.Width(colW + 4).Render(strings.Join(right, "\n"))
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
+
+	// Pad each line to exactly colW using visual-width measurement.
+	// This avoids passing zone-marked strings through a Width-constrained
+	// lipgloss Render, which would miscount their widths and cause reflow.
+	padLine := func(s string, w int) string {
+		vw := lipgloss.Width(s)
+		if vw >= w {
+			return s
+		}
+		return s + strings.Repeat(" ", w-vw)
+	}
+
+	leftPadded := make([]string, len(left))
+	for i, l := range left {
+		leftPadded[i] = padLine(l, colW)
+	}
+	rightPadded := make([]string, len(right))
+	for i, r := range right {
+		rightPadded[i] = padLine(r, colW)
+	}
+
+	// Equalise row counts so the horizontal join is a clean rectangle.
+	for len(leftPadded) < len(rightPadded) {
+		leftPadded = append(leftPadded, strings.Repeat(" ", colW))
+	}
+	for len(rightPadded) < len(leftPadded) {
+		rightPadded = append(rightPadded, "")
+	}
+
+	colGapStr := strings.Repeat(" ", colGap)
+	var sb strings.Builder
+	for i := range leftPadded {
+		sb.WriteString(leftPadded[i])
+		sb.WriteString(colGapStr)
+		sb.WriteString(rightPadded[i])
+		if i < len(leftPadded)-1 {
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
 }
 
 // ─── Zone / click helpers ─────────────────────────────────────────────────────

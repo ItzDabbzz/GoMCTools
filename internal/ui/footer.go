@@ -31,7 +31,7 @@ var DefaultKeys = GlobalKeyMap{
 		key.WithHelp("tab/→", "next tab"),
 	),
 	PrevTab: key.NewBinding(
-		key.WithKeys("shift+tab", "ctrl+left", "h", "p"),
+		key.WithKeys("shift+tab", "ctrl+left", "h"),
 		key.WithHelp("shift+tab/←", "prev tab"),
 	),
 	Help: key.NewBinding(

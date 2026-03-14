@@ -43,23 +43,29 @@ func (m *modlistPage) writePackHeader(b *strings.Builder, pack ui.PackInfo) {
 	fmt.Fprintf(b, "# %s\n\n", name)
 
 	if m.showProjectMeta {
-		hasAny := pack.PackAuthor != "" || pack.PackVersion != "" ||
-			pack.PackDescription != "" || pack.WebsiteURL != ""
-		if hasAny {
-			if pack.PackAuthor != "" {
-				fmt.Fprintf(b, "> **Author:** %s  \n", pack.PackAuthor)
-			}
-			if pack.PackVersion != "" {
-				fmt.Fprintf(b, "> **Version:** %s  \n", pack.PackVersion)
-			}
-			if pack.PackDescription != "" {
-				fmt.Fprintf(b, "> **Description:** %s  \n", pack.PackDescription)
-			}
-			if pack.WebsiteURL != "" {
-				fmt.Fprintf(b, "> **Website:** %s  \n", pack.WebsiteURL)
-			}
-			b.WriteString("\n")
+		// Use list items rather than a blockquote with hard-line-breaks (> ... \n).
+		// Glamour does not reliably honour the two-space hard-break inside a
+		// blockquote — consecutive > lines without a blank > separator merge into
+		// a single paragraph, putting everything on one line.  A plain list
+		// renders correctly in both raw and glamour-rendered modes.
+		sourceLabel := string(pack.SourceType)
+		if sourceLabel == "" {
+			sourceLabel = "unknown"
 		}
+		fmt.Fprintf(b, "- **Source:** %s\n", sourceLabel)
+		if pack.PackAuthor != "" {
+			fmt.Fprintf(b, "- **Author:** %s\n", pack.PackAuthor)
+		}
+		if pack.PackVersion != "" {
+			fmt.Fprintf(b, "- **Version:** %s\n", pack.PackVersion)
+		}
+		if pack.PackDescription != "" {
+			fmt.Fprintf(b, "- **Description:** %s\n", pack.PackDescription)
+		}
+		if pack.WebsiteURL != "" {
+			fmt.Fprintf(b, "- **Website:** %s\n", pack.WebsiteURL)
+		}
+		b.WriteString("\n")
 	}
 
 	if pack.MinecraftVersion != "" || pack.LoaderUID != "" {
@@ -546,6 +552,54 @@ func boolToUint64(b bool) uint64 {
 }
 
 // ─── String helpers ───────────────────────────────────────────────────────────
+
+// hardWrapLines hard-wraps every line in s at maxWidth columns, breaking on
+// word boundaries where possible and falling back to a hard cut only when a
+// single word exceeds maxWidth.  This is used for raw/BBCode content before
+// it is handed to the viewport, whose internal renderer does not word-wrap —
+// any line longer than previewW would overflow the column and break the layout.
+func hardWrapLines(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	var out []string
+	for _, line := range lines {
+		out = append(out, wrapLine(line, maxWidth)...)
+	}
+	return strings.Join(out, "\n")
+}
+
+// wrapLine breaks a single line into segments of at most maxWidth runes,
+// splitting at the last space within the limit when possible.
+func wrapLine(line string, maxWidth int) []string {
+	if lipgloss.Width(line) <= maxWidth {
+		return []string{line}
+	}
+	var result []string
+	runes := []rune(line)
+	for len(runes) > 0 {
+		if len(runes) <= maxWidth {
+			result = append(result, string(runes))
+			break
+		}
+		split := maxWidth
+		// Walk back to find a space to break on.
+		for split > 0 && runes[split] != ' ' {
+			split--
+		}
+		if split == 0 {
+			split = maxWidth // no space found — hard cut
+		}
+		result = append(result, string(runes[:split]))
+		runes = runes[split:]
+		// Trim the leading space on the continuation.
+		for len(runes) > 0 && runes[0] == ' ' {
+			runes = runes[1:]
+		}
+	}
+	return result
+}
 
 // valueOr returns val if non-empty, otherwise fallback.
 func valueOr(val, fallback string) string {
