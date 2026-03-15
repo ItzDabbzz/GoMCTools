@@ -43,9 +43,9 @@ type Model struct {
 
 const (
 	// MinWidth is the minimum usable terminal width.
-	MinWidth = 150
+	MinWidth = 50
 	// MinHeight is the minimum usable terminal height.
-	MinHeight = 26
+	MinHeight = 32
 )
 
 // NewModel initializes a Model ready for tea.NewProgram.
