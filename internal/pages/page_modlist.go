@@ -397,27 +397,6 @@ func (m *modlistPage) View() string {
 		return "Modlist Generator — loading…"
 	}
 
-	displayW := m.contentW
-	if displayW < 40 {
-		displayW = 80
-	}
-	displayH := m.contentH
-	if displayH < 10 {
-		displayH = 20
-	}
-	if displayW == 0 || displayH == 0 {
-		return "Modlist Generator — initializing..."
-	}
-
-	settingsW := m.settingsW
-	if settingsW < 10 || settingsW > displayW-20 {
-		settingsW = displayW / 3
-	}
-	previewW := displayW - settingsW - 2
-	if previewW < 20 {
-		previewW = 40
-	}
-
 	// renderSettings already pads each column manually — no Width wrapper needed.
 	settings := m.renderSettings()
 
@@ -427,6 +406,10 @@ func (m *modlistPage) View() string {
 	} else {
 		preview = statusStyle.Render("Load a pack from the Selector tab to generate a mod list.")
 	}
+
+	// Clamp the preview column to exactly previewW so it can never overflow
+	// into or past the settings column regardless of viewport internal state.
+	preview = lipgloss.NewStyle().Width(m.previewW).MaxWidth(m.previewW).Render(preview)
 
 	gap := strings.Repeat(" ", 2)
 	layout := lipgloss.JoinHorizontal(lipgloss.Top, settings, gap, preview)
@@ -559,18 +542,6 @@ func (m *modlistPage) clickIDs() []string {
 		"view-meta", "view-raw",
 		"action-copy", "action-export",
 	}
-}
-
-func (m *modlistPage) resolveZoneID(z *zone.ZoneInfo) string {
-	if z == nil || m.zone == nil {
-		return ""
-	}
-	for _, id := range m.clickIDs() {
-		if stored := m.zone.Get(m.prefix + id); stored == z {
-			return id
-		}
-	}
-	return ""
 }
 
 func (m *modlistPage) handleClick(id string) *modlistPage {
