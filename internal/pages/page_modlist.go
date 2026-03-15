@@ -116,8 +116,13 @@ func NewModlistPage(state *modpack.SharedState) ui.Page {
 	vp := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 	vp.MouseWheelDelta = 2
 	vp.MouseWheelEnabled = true
+	// Ensure viewport style doesn't add borders/padding that could offset zones
+	vp.Style = lipgloss.NewStyle()
 
 	mode := modlistMerged
+	if state.Config.Modlist.Mode == 1 {
+		mode = modlistSeparated
+	}
 	if state.Config.Modlist.Mode == 1 {
 		mode = modlistSeparated
 	}
@@ -176,13 +181,6 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		m.status = fmt.Sprintf("Loaded %d mods", len(typed.Info.Mods))
 		m.dirty = true
 
-	case zone.MsgZoneInBounds:
-		if typed.Event.Mouse().Button == tea.MouseLeft {
-			if id := m.resolveZoneID(typed.Zone); id != "" {
-				m = m.handleClick(id)
-			}
-		}
-
 	case ui.ContentSizeMsg:
 		m.contentW = typed.Width
 		m.contentH = typed.Height
@@ -194,10 +192,15 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if m.zone != nil && typed.Mouse().Button == tea.MouseLeft {
-			if id := m.resolveMouseZone(typed); id != "" {
-				m = m.handleClick(id)
+			for _, id := range m.clickIDs() {
+				fullID := m.prefix + id
+				z := m.zone.Get(fullID)
+				if z != nil && z.InBounds(typed) {
+					m = m.handleClick(id)
+				}
 			}
 		}
+		return m, nil
 
 	case tea.KeyMsg:
 		switch {
@@ -415,17 +418,14 @@ func (m *modlistPage) View() string {
 
 	var preview string
 	if m.state != nil && m.state.Pack.InstancePath != "" {
-		preview = lipgloss.NewStyle().Width(previewW).Render(m.viewport.View())
+		preview = m.viewport.View()
 	} else {
-		preview = lipgloss.NewStyle().
-			Width(previewW).
-			Height(displayH / 2).
-			Render(statusStyle.Render("Load a pack from the Selector tab to generate a mod list."))
+		preview = statusStyle.Render("Load a pack from the Selector tab to generate a mod list.")
 	}
 
 	gap := strings.Repeat(" ", 2)
 	layout := lipgloss.JoinHorizontal(lipgloss.Top, settings, gap, preview)
-	layout = lipgloss.NewStyle().Width(displayW).Render(layout)
+
 	if m.status != "" {
 		layout += "\n" + statusStyle.Render(m.status)
 	}
@@ -562,18 +562,6 @@ func (m *modlistPage) resolveZoneID(z *zone.ZoneInfo) string {
 	}
 	for _, id := range m.clickIDs() {
 		if stored := m.zone.Get(m.prefix + id); stored == z {
-			return id
-		}
-	}
-	return ""
-}
-
-func (m *modlistPage) resolveMouseZone(msg tea.MouseMsg) string {
-	if m.zone == nil {
-		return ""
-	}
-	for _, id := range m.clickIDs() {
-		if stored := m.zone.Get(m.prefix + id); stored != nil && stored.InBounds(msg) {
 			return id
 		}
 	}

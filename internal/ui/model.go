@@ -17,9 +17,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	zone "github.com/lrstanley/bubblezone/v2"
+
 	"github.com/ItzDabbzz/GoMCTools/internal/logger"
 	"github.com/ItzDabbzz/GoMCTools/internal/modpack"
-	zone "github.com/lrstanley/bubblezone/v2"
 )
 
 // Model is the root application state, managing multiple Page instances
@@ -109,7 +110,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			mouse := msg.Mouse()
 			if mouse.Button == tea.MouseLeft {
 				for i := range m.pages {
-					z := m.zone.Get(fmt.Sprintf("%stab-%d", m.zonePrefix, i))
+					id := fmt.Sprintf("%stab-%d", m.zonePrefix, i)
+					z := m.zone.Get(id)
 					if z != nil && z.InBounds(msg) {
 						m.activePage = i
 						return m, m.resizeCmd()
@@ -124,6 +126,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.resizeCmd()
 			}
 		}
+		// Pass non-tab mouse clicks to the active page
 		updatedPage, cmd := m.pages[m.activePage].Update(msg)
 		m.pages[m.activePage] = updatedPage
 		return m, cmd

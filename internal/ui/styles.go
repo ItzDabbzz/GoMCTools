@@ -31,7 +31,7 @@ var (
 	highlightColor    = compat.AdaptiveColor{Light: lipgloss.Color("#874BFD"), Dark: lipgloss.Color("#7D56F4")}
 	inactiveTabStyle  = lipgloss.NewStyle().Border(inactiveTabBorder, true).BorderForeground(highlightColor).Padding(0, 1)
 	activeTabStyle    = inactiveTabStyle.Border(activeTabBorder, true)
-	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Padding(1, 1).Border(lipgloss.NormalBorder()).UnsetBorderTop()
+	windowStyle       = lipgloss.NewStyle().BorderForeground(highlightColor).Border(lipgloss.NormalBorder()).UnsetBorderTop()
 	inputBoxStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder(), true).BorderForeground(highlightColor).Padding(0, 1)
 	borderFillStyle   = lipgloss.NewStyle().Foreground(highlightColor)
 	warningBoxStyle   = lipgloss.NewStyle().
