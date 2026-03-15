@@ -190,8 +190,8 @@ func (m *modlistPage) Update(msg tea.Msg) (ui.Page, tea.Cmd) {
 		m.pageWidth = typed.Width
 		m.pageHeight = typed.Height
 
-	case tea.MouseMsg:
-		if m.zone != nil && typed.Mouse().Button == tea.MouseLeft {
+	case tea.MouseReleaseMsg:
+		if m.zone != nil {
 			for _, id := range m.clickIDs() {
 				fullID := m.prefix + id
 				z := m.zone.Get(fullID)
