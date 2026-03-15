@@ -157,6 +157,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.help.SetWidth(msg.Width)
 		m.contentWidth, m.contentHeight = m.computeContentSize()
+		cw, ch := m.contentWidth, m.contentHeight
+		resizeCmd = func() tea.Msg { return ContentSizeMsg{Width: cw, Height: ch} }
 	case modpack.PackLoadedMsg:
 		if m.state != nil {
 			if msg.Err != nil {
