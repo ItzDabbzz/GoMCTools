@@ -66,6 +66,7 @@ Create professional Markdown modlists for your documentation or GitHub releases.
 <!-- !Dashboard -->
 ![Dashboard No Pack](https://raw.githubusercontent.com/ItzDabbzz/GoMCTools/refs/heads/main/docs/images/dash_nopack.png)
 ![Dashboard Pack](https://raw.githubusercontent.com/ItzDabbzz/GoMCTools/refs/heads/main/docs/images/dash_pack.png)
+![Dashboard Multi-Source Pack](https://raw.githubusercontent.com/ItzDabbzz/GoMCTools/refs/heads/main/docs/images/dash_pack_multi.png)
 *Pack metadata and mod distribution analytics.*
 
 ### Modlist Generator
