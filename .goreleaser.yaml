@@ -1,20 +1,26 @@
-version: 2
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+archives:
+  - format_overrides:
+      - formats: zip
+        goos: windows
+    formats: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
+      {{- .Arch }}
+
 before:
   hooks:
     - go mod tidy
 
-gomod:
-  proxy: true
 
 builds:
   - env: ["CGO_ENABLED=0"]
-    mod_timestamp: "{{ .CommitTimestamp }}"
     flags: ["-trimpath"]
+    mod_timestamp: "{{ .CommitTimestamp }}"
     targets: ["go_first_class"]
 
 changelog:
-  sort: asc
-  use: github
   filters:
     exclude:
       - "^docs:"
@@ -25,51 +31,47 @@ changelog:
       - Merge branch
       - go mod tidy
   groups:
-    - title: "🚀 New Features"
+    - order: 0
       regexp: '^.*feat(\([\w\-]+\))?:+.*$'
-      order: 0
+      title: "🚀 New Features"
 
-    - title: "🐛 Bug Fixes"
+    - order: 10
       regexp: '^.*(fix|bug)(\([\w\-]+\))?:+.*$'
-      order: 10
+      title: "🐛 Bug Fixes"
 
-    - title: "⚡ Performance"
+    - order: 20
       regexp: '^.*perf(\([\w\-]+\))?:+.*$'
-      order: 20
+      title: "⚡ Performance"
 
-    - title: "♻️ Refactoring"
+    - order: 30
       regexp: '^.*refactor(\([\w\-]+\))?:+.*$'
-      order: 30
+      title: "♻️ Refactoring"
 
-    - title: "🧰 Maintenance"
+    - order: 40
       regexp: '^.*(chore|build|ci)(\([\w\-]+\))?:+.*$'
-      order: 40
+      title: "🧰 Maintenance"
 
-    - title: "📦 Dependencies"
+    - order: 50
       regexp: '^.*(deps|dep)(\([\w\-]+\))?:+.*$'
-      order: 50
+      title: "📦 Dependencies"
 
-    - title: "Other work"
-      order: 999
-
-archives:
-  - format: tar.gz
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_
-      {{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
-      {{- .Arch }}
-
-    format_overrides:
-      - goos: windows
-        format: zip
+    - order: 999
+      title: "Other work"
+  sort: asc
+  use: github
 
 checksum:
   name_template: "checksums.txt"
 
+gomod:
+  proxy: true
+
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+project_name: GoMCTools
+
 release:
-  github:
-    owner: ItzDabbzz
-    name: GoMCTools
   footer: |
 
     ---
@@ -78,3 +80,8 @@ release:
 
 
     _Released with [GoReleaser](https://goreleaser.com)!_
+  github:
+    name: GoMCTools
+    owner: ItzDabbzz
+
+version: 2
