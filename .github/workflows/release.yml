@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to run tests against'
+        type: environment
+        required: true
 
 permissions:
   contents: write
@@ -21,13 +27,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.8"
           cache: true
+          go-version: "1.25.8"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          version: "~> v2"
           args: release --clean
+          version: "~> v2"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
