@@ -117,7 +117,9 @@ func NewModlistPage(state *modpack.SharedState) ui.Page {
 	vp.MouseWheelDelta = 2
 	vp.MouseWheelEnabled = true
 	// Ensure viewport style doesn't add borders/padding that could offset zones
-	vp.Style = lipgloss.NewStyle()
+	vp.Style = lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), true).
+		BorderForeground(ui.HighlightColor)
 
 	mode := modlistMerged
 	if state.Config.Modlist.Mode == 1 {
@@ -314,8 +316,8 @@ func (m *modlistPage) updateLayout() {
 	m.settingsW = settings
 	m.previewW = preview
 
-	if m.previewW > 0 {
-		m.viewport.SetWidth(m.previewW)
+	if m.previewW > 2 {
+		m.viewport.SetWidth(m.previewW - 2) // 1 left border + 1 right border
 	}
 
 	// ContentSizeMsg already accounts for all frame overhead (tab bar, footer,
@@ -323,6 +325,9 @@ func (m *modlistPage) updateLayout() {
 	avail := m.contentH - 1
 	if avail < 8 {
 		avail = 8
+	}
+	if avail > 2 {
+		avail -= 2 // 1 top border + 1 bottom border
 	}
 	m.viewport.SetHeight(avail)
 
