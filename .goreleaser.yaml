@@ -25,16 +25,31 @@ changelog:
       - Merge branch
       - go mod tidy
   groups:
-    - title: "New Features"
-      regexp: "^.*feat[(\\w)]*:+.*$"
+    - title: "🚀 New Features"
+      regexp: '^.*feat(\([\w\-]+\))?:+.*$'
       order: 0
-    - title: "Bug fixes"
-      regexp: "^.*fix[(\\w)]*:+.*$"
+
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*(fix|bug)(\([\w\-]+\))?:+.*$'
       order: 10
-    - title: "Bug fixes"
-      regexp: "^.*bug[(\\w)]*:+.*$"
-      order: 10
-    - title: Other work
+
+    - title: "⚡ Performance"
+      regexp: '^.*perf(\([\w\-]+\))?:+.*$'
+      order: 20
+
+    - title: "♻️ Refactoring"
+      regexp: '^.*refactor(\([\w\-]+\))?:+.*$'
+      order: 30
+
+    - title: "🧰 Maintenance"
+      regexp: '^.*(chore|build|ci)(\([\w\-]+\))?:+.*$'
+      order: 40
+
+    - title: "📦 Dependencies"
+      regexp: '^.*(deps|dep)(\([\w\-]+\))?:+.*$'
+      order: 50
+
+    - title: "Other work"
       order: 999
 
 archives:
