@@ -157,8 +157,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.help.SetWidth(msg.Width)
 		m.contentWidth, m.contentHeight = m.computeContentSize()
-		cw, ch := m.contentWidth, m.contentHeight
-		resizeCmd = func() tea.Msg { return ContentSizeMsg{Width: cw, Height: ch} }
+		// Dispatch ContentSizeMsg to ALL pages synchronously here, in the same
+		// Update tick as WindowSizeMsg. If we queue it as a command instead,
+		// Bubble Tea renders one full stale frame before the layout updates —
+		// that's the visible lag on resize. Doing it inline means View() on this
+		// same tick already sees correct dimensions.
+		sizeMsg := ContentSizeMsg{Width: m.contentWidth, Height: m.contentHeight}
+		for i, p := range m.pages {
+			updated, c := p.Update(sizeMsg)
+			m.pages[i] = updated
+			if c != nil {
+				resizeCmd = tea.Batch(resizeCmd, c)
+			}
+		}
 	case modpack.PackLoadedMsg:
 		if m.state != nil {
 			if msg.Err != nil {
@@ -394,12 +405,8 @@ func (m Model) resizeCmd() tea.Cmd {
 	if m.width == 0 || m.height == 0 {
 		return nil
 	}
-	w, h := m.width, m.height
 	cw, ch := m.contentWidth, m.contentHeight
-	return tea.Batch(
-		func() tea.Msg { return tea.WindowSizeMsg{Width: w, Height: h} },
-		func() tea.Msg { return ContentSizeMsg{Width: cw, Height: ch} },
-	)
+	return func() tea.Msg { return ContentSizeMsg{Width: cw, Height: ch} }
 }
 
 // SetActivePage changes the active page to the given index, clamped to valid bounds.
